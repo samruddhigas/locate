@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Share Location — Samruddhi Gas Agency (HP Gas)</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700&family=DM+Sans:wght@400;500;600;700;800&display=swap');
+
+  :root {
+    --orange: #f97316;
+    --orange-light: #fff7ed;
+    --orange-mid: #fed7aa;
+    --green: #16a34a;
+    --green-light: #f0fdf4;
+    --red: #dc2626;
+    --yellow: #d97706;
+    --text: #1c1917;
+    --text2: #78716c;
+    --border: #e7e5e4;
+    --bg: #fafaf9;
+    --card: #ffffff;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0;
+  }
+
+  /* ── HEADER BAND ── */
+  .top-band {
+    width: 100%;
+    background: linear-gradient(135deg, #7c2d12 0%, #c2410c 50%, #ea580c 100%);
+    padding: 20px 24px 28px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .top-band::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  }
+  .flame-icon {
+    font-size: 36px;
+    display: block;
+    margin-bottom: 6px;
+    filter: drop-shadow(0 2px 8px rgba(0,0,0,.2));
+  }
+  .agency-name {
+    font-size: 18px;
+    font-weight: 800;
+    color: #fff;
+    letter-spacing: .3px;
+  }
+  .agency-sub {
+    font-size: 12px;
+    color: rgba(255,255,255,.75);
+    margin-top: 2px;
+  }
+
+  /* ── MAIN CARD ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    width: calc(100% - 32px);
+    max-width: 420px;
+    margin: -16px auto 24px;
+    padding: 28px 24px;
+    box-shadow: 0 4px 24px rgba(0,0,0,.08);
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── CONSUMER INFO ── */
+  .consumer-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--orange-light);
+    border: 1px solid var(--orange-mid);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--orange);
+    margin-bottom: 14px;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+  }
+  .consumer-name {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--text);
+    margin-bottom: 4px;
+    font-family: 'Noto Sans Devanagari', 'DM Sans', sans-serif;
+  }
+  .consumer-no {
+    font-size: 12px;
+    color: var(--text2);
+    margin-bottom: 20px;
+  }
+
+  /* ── MESSAGE BOX ── */
+  .message-box {
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #0c4a6e;
+    margin-bottom: 24px;
+  }
+  .message-box .marathi {
+    font-family: 'Noto Sans Devanagari', sans-serif;
+    font-size: 12px;
+    color: #0369a1;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid #bae6fd;
+  }
+
+  /* ── ACCURACY METER ── */
+  .acc-meter {
+    display: none;
+    margin-bottom: 20px;
+  }
+  .acc-meter.visible { display: block; }
+  .acc-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .acc-text { font-size: 13px; font-weight: 600; color: var(--text); }
+  .acc-value {
+    font-size: 14px;
+    font-weight: 800;
+    font-family: monospace;
+    padding: 3px 10px;
+    border-radius: 8px;
+    transition: all .3s;
+  }
+  .acc-value.red    { background:#fef2f2;color:var(--red); }
+  .acc-value.yellow { background:#fffbeb;color:var(--yellow); }
+  .acc-value.green  { background:var(--green-light);color:var(--green); }
+  .acc-track {
+    height: 10px;
+    background: #e7e5e4;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 6px;
+  }
+  .acc-fill {
+    height: 100%;
+    border-radius: 10px;
+    transition: width .5s ease, background .5s;
+    width: 0%;
+  }
+  .acc-hint { font-size: 11px; color: var(--text2); text-align: center; }
+
+  /* ── MAIN BUTTON ── */
+  .share-btn {
+    width: 100%;
+    padding: 18px;
+    background: linear-gradient(135deg, var(--orange) 0%, #dc2626 100%);
+    color: #fff;
+    border: none;
+    border-radius: 14px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    box-shadow: 0 4px 16px rgba(249,115,22,.35);
+    transition: transform .15s, box-shadow .15s;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .share-btn:active { transform: scale(.98); box-shadow: 0 2px 8px rgba(249,115,22,.25); }
+  .share-btn:disabled { background: #d4d4d4; box-shadow: none; cursor: default; color: #737373; }
+  .btn-marathi {
+    font-family: 'Noto Sans Devanagari', sans-serif;
+    font-size: 13px;
+    opacity: .85;
+    display: block;
+    margin-top: 2px;
+    font-weight: 400;
+  }
+
+  /* ── STATUS STATES ── */
+  .status-card {
+    display: none;
+    border-radius: 16px;
+    padding: 24px;
+    text-align: center;
+    margin-bottom: 16px;
+  }
+  .status-card.success {
+    display: block;
+    background: var(--green-light);
+    border: 1px solid #86efac;
+  }
+  .status-card.error {
+    display: block;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+  }
+  .status-icon { font-size: 40px; margin-bottom: 10px; display: block; }
+  .status-title { font-size: 18px; font-weight: 800; margin-bottom: 6px; }
+  .status-sub { font-size: 13px; opacity: .75; line-height: 1.5; }
+  .status-card.success .status-title { color: var(--green); }
+  .status-card.error .status-title { color: var(--red); }
+
+  /* ── PRIVACY NOTE ── */
+  .privacy-note {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    background: #f5f5f4;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-top: 16px;
+  }
+  .privacy-note .icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+  .privacy-note p { font-size: 11px; color: var(--text2); line-height: 1.5; }
+
+  /* ── FOOTER ── */
+  .page-footer {
+    font-size: 11px;
+    color: #a8a29e;
+    text-align: center;
+    padding: 12px 16px 24px;
+  }
+
+  /* ── LOADING STATE ── */
+  .loading-spinner {
+    display: inline-block;
+    width: 18px; height: 18px;
+    border: 2px solid rgba(255,255,255,.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── ALREADY CAPTURED ── */
+  .already-done {
+    display: none;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 13px;
+    color: #92400e;
+    margin-bottom: 16px;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+
+<div class="top-band">
+  <img src="data:image/jpeg;base64,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" alt="HP Gas Logo"
+    style="height:60px;object-fit:contain;margin-bottom:8px;border-radius:6px;filter:drop-shadow(0 2px 8px rgba(0,0,0,.3))">
+  <div class="agency-name">Samruddhi Gas Agency</div>
+  <div class="agency-sub" style="font-family:'Noto Sans Devanagari',sans-serif;font-size:13px">समृद्धी गॅस एजन्सी (HP Gas)</div>
+  <div class="agency-sub" style="margin-top:4px;font-size:11px">Near Anasuya Mata Mandir, Front of Kadu Petrol Pump, Katol - 441302</div>
+</div>
+
+<div class="card">
+
+  <!-- Consumer Info -->
+  <div class="consumer-tag">📋 LPG Consumer</div>
+  <div class="consumer-name" id="consumerName">Loading…</div>
+  <div class="consumer-no" id="consumerNo">Consumer No: —</div>
+
+  <!-- Instruction box -->
+  <div class="message-box" id="msgBox">
+    To ensure fast and accurate cylinder delivery to your door, please share your location once.
+    This takes only 10–15 seconds.
+    <div class="marathi">
+      जलद सिलेंडर डिलिव्हरीसाठी कृपया एकदा आपले घराचे लोकेशन शेअर करा. फक्त १०-१५ सेकंद लागतील.
+    </div>
+  </div>
+
+  <!-- Already captured notice -->
+  <div class="already-done" id="alreadyDone">
+    ✅ Your location is already saved with us.
+    If you've moved to a new address, tap below to update it.
+  </div>
+
+  <!-- Accuracy meter (shows during capture) -->
+  <div class="acc-meter" id="accMeter">
+    <div class="acc-label">
+      <span class="acc-text">📡 Getting precise location…</span>
+      <span class="acc-value red" id="accValue">—</span>
+    </div>
+    <div class="acc-track">
+      <div class="acc-fill" id="accFill" style="background:var(--red)"></div>
+    </div>
+    <div class="acc-hint" id="accHint">Please stay still and keep phone near a window…</div>
+  </div>
+
+  <!-- Success / Error states -->
+  <div class="status-card success" id="successCard">
+    <span class="status-icon">✅</span>
+    <div class="status-title">Location Saved!</div>
+    <div class="status-sub" id="successDetail">
+      Your location has been saved.<br>
+      Thank you — we'll deliver to your exact door next time.
+    </div>
+  </div>
+
+  <div class="status-card error" id="errorCard">
+    <span class="status-icon">❌</span>
+    <div class="status-title">Could Not Save</div>
+    <div class="status-sub" id="errorDetail">Something went wrong. Please try again.</div>
+  </div>
+
+  <!-- Share Button -->
+  <button class="share-btn" id="shareBtn" onclick="startCapture()">
+    <span id="shareBtnIcon">📍</span>
+    <span>
+      Share My Location
+      <span class="btn-marathi">माझे लोकेशन शेअर करा</span>
+    </span>
+  </button>
+
+  <div class="privacy-note">
+    <span class="icon">🔒</span>
+    <p>
+      Your location is used <strong>only</strong> for LPG cylinder delivery by Samruddhi Gas Agency.
+      It is not shared with anyone else and is stored securely.
+      <br>
+      <span style="font-family:'Noto Sans Devanagari',sans-serif">
+        आपले लोकेशन फक्त समृद्धी गॅस एजन्सीच्या डिलिव्हरीसाठी वापरले जाईल.
+      </span>
+    </p>
+  </div>
+</div>
+
+<div class="page-footer">
+  Samruddhi Gas Agency (HP Gas) · समृद्धी गॅस एजन्सी · Near Anasuya Mata Mandir, Katol - 441302
+</div>
+
+<script>
+// ================================================================
+// CONFIG — injected by dashboard OR set here for GitHub Pages
+// ================================================================
+const SB_URL  = window.SB_URL  || 'https://ayxurfmecqccxoomrkcm.supabase.co';
+const SB_ANON = window.SB_ANON || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5eHVyZm1lY3FjY3hvb21ya2NtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2MDYwNzksImV4cCI6MjA4ODE4MjA3OX0.0sU6zonp5yzsXNP-rDuGLn_khSWlf3MA9b10AZxSrns';
+
+// ================================================================
+// INIT
+// ================================================================
+let _sbClient = null;
+let _consumerNo = '';
+let _consumerName = '';
+let _capturing = false;
+let _readings = [];
+let _watchId = null;
+
+window.addEventListener('DOMContentLoaded', async () => {
+  // Read consumer number from URL: ?c=C001234
+  const params = new URLSearchParams(window.location.search);
+  _consumerNo = (params.get('c') || params.get('consumer') || '').trim();
+
+  if (!_consumerNo) {
+    showError('Invalid link. Please use the link sent to you by the gas agency.');
+    disableBtn();
+    return;
+  }
+
+  document.getElementById('consumerNo').textContent = 'Consumer No: ' + _consumerNo;
+
+  // Init Supabase
+  if (SB_URL && SB_ANON && SB_URL !== 'YOUR_SUPABASE_URL') {
+    _sbClient = window.supabase.createClient(SB_URL, SB_ANON);
+    await loadConsumerInfo();
+  } else {
+    document.getElementById('consumerName').textContent = 'Consumer';
+  }
+});
+
+async function loadConsumerInfo() {
+  try {
+    // Try to get consumer name from masters
+    const { data: master } = await _sbClient
+      .from('lpg_masters')
+      .select('consumer_name')
+      .eq('consumer_no', _consumerNo)
+      .maybeSingle();
+
+    if (master) {
+      _consumerName = master.consumer_name;
+      document.getElementById('consumerName').textContent = _consumerName;
+    } else {
+      document.getElementById('consumerName').textContent = 'Consumer';
+    }
+
+    // Check if location already captured
+    const { data: existing } = await _sbClient
+      .from('lpg_gps')
+      .select('status, acc, captured_at')
+      .eq('consumer_no', _consumerNo)
+      .maybeSingle();
+
+    if (existing && existing.status === 'approved') {
+      document.getElementById('alreadyDone').style.display = 'block';
+      document.getElementById('shareBtn').textContent = '📍 Update My Location';
+    }
+  } catch(e) {
+    console.warn('loadConsumerInfo error:', e);
+    document.getElementById('consumerName').textContent = 'Consumer';
+  }
+}
+
+// ================================================================
+// LOCATION CAPTURE
+// ================================================================
+function startCapture() {
+  if (_capturing) return;
+
+  if (!navigator.geolocation) {
+    showError('Your browser does not support GPS. Please try opening this link in Chrome.');
+    return;
+  }
+
+  // Check Supabase config
+  if (!_sbClient) {
+    showError('Configuration error. Please contact the gas agency.');
+    return;
+  }
+
+  _capturing = true;
+  _readings = [];
+
+  // Update button to loading state
+  document.getElementById('shareBtn').disabled = true;
+  document.getElementById('shareBtn').innerHTML = `
+    <span class="loading-spinner"></span>
+    <span>Getting Location…<span class="btn-marathi">लोकेशन मिळवत आहे…</span></span>
+  `;
+
+  // Hide any previous status
+  document.getElementById('successCard').style.display = 'none';
+  document.getElementById('errorCard').style.display = 'none';
+  document.getElementById('alreadyDone').style.display = 'none';
+
+  // Show accuracy meter
+  document.getElementById('accMeter').classList.add('visible');
+
+  // Request permission and start watching
+  _watchId = navigator.geolocation.watchPosition(
+    onGPSReading,
+    onGPSError,
+    { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
+  );
+
+  // Safety timeout — save best reading after 30s regardless
+  setTimeout(() => {
+    if (_capturing) saveBestReading('timeout');
+  }, 30000);
+}
+
+function onGPSReading(pos) {
+  if (!_capturing) return;
+
+  const { latitude: lat, longitude: lng, accuracy: acc } = pos.coords;
+  _readings.push({ lat, lng, acc, ts: Date.now() });
+
+  updateAccMeter(acc);
+
+  // Auto-save if accuracy ≤ 15m
+  if (acc <= 15) {
+    saveBestReading('auto');
+  }
+}
+
+function onGPSError(err) {
+  _capturing = false;
+  stopWatch();
+  document.getElementById('accMeter').classList.remove('visible');
+
+  let msg = 'Could not get your location. ';
+  if (err.code === 1) {
+    msg = 'Location permission was denied.\n\nPlease tap Allow when asked, or enable location in your phone settings.\n\nPhone Settings → Browser → Location → Allow';
+  } else if (err.code === 2) {
+    msg = 'GPS signal not available. Please go near a window or step outside and try again.';
+  } else if (err.code === 3) {
+    msg = 'GPS is taking too long. Please go near a window or step outside and try again.';
+  }
+
+  showError(msg);
+  resetBtn();
+}
+
+function updateAccMeter(acc) {
+  const fill  = document.getElementById('accFill');
+  const value = document.getElementById('accValue');
+  const hint  = document.getElementById('accHint');
+
+  // Map accuracy to bar: 0m=100%, 100m=0%
+  const pct = Math.max(0, Math.min(100, 100 - (acc - 5)));
+
+  let color, cls, hintText;
+  if (acc <= 15) {
+    color = '#16a34a'; cls = 'green';
+    hintText = '✅ Excellent accuracy! Saving…';
+  } else if (acc <= 40) {
+    color = '#d97706'; cls = 'yellow';
+    hintText = '⏳ Good signal. Getting more precise…';
+  } else {
+    color = '#dc2626'; cls = 'red';
+    hintText = '📡 Searching… move near a window or step outside';
+  }
+
+  fill.style.width = pct + '%';
+  fill.style.background = color;
+  value.textContent = '±' + Math.round(acc) + 'm';
+  value.className = 'acc-value ' + cls;
+  hint.textContent = hintText;
+}
+
+async function saveBestReading(reason) {
+  if (!_capturing) return;
+  _capturing = false;
+  stopWatch();
+
+  // Pick reading with best (lowest) accuracy
+  if (!_readings.length) {
+    showError('No GPS readings captured. Please try again.');
+    resetBtn();
+    return;
+  }
+
+  const best = _readings.reduce((a,b) => a.acc < b.acc ? a : b);
+
+  document.getElementById('accMeter').classList.remove('visible');
+  document.getElementById('shareBtn').innerHTML = `
+    <span class="loading-spinner"></span>
+    <span>Saving…<span class="btn-marathi">जतन करत आहे…</span></span>
+  `;
+
+  try {
+    const now = new Date().toISOString();
+    const { error } = await _sbClient.from('lpg_gps').upsert({
+      consumer_no:   _consumerNo,
+      lat:           best.lat,
+      lng:           best.lng,
+      acc:           best.acc,
+      count:         _readings.length,
+      status:        best.acc <= 15 ? 'approved' : 'pending',
+      consumer_name: _consumerName || _consumerNo,
+      source:        'consumer_link',
+      captured_at:   now
+    }, { onConflict: 'consumer_no' });
+
+    if (error) throw error;
+
+    // Success!
+    document.getElementById('successDetail').innerHTML = `
+      📍 Accuracy: <strong>±${Math.round(best.acc)}m</strong><br>
+      Your location has been saved successfully.<br><br>
+      <span style="font-family:'Noto Sans Devanagari',sans-serif;font-size:12px">
+        धन्यवाद! आपले लोकेशन यशस्वीरित्या जतन झाले.
+      </span>
+    `;
+    showSuccess();
+    document.getElementById('shareBtn').style.display = 'none';
+    document.getElementById('msgBox').style.display = 'none';
+
+  } catch(e) {
+    console.error('Save GPS error:', e);
+    showError('Could not save your location. Please check your internet connection and try again.');
+    resetBtn();
+    _capturing = false;
+  }
+}
+
+function stopWatch() {
+  if (_watchId !== null) {
+    navigator.geolocation.clearWatch(_watchId);
+    _watchId = null;
+  }
+}
+
+// ================================================================
+// UI HELPERS
+// ================================================================
+function showSuccess() {
+  document.getElementById('successCard').style.display = 'block';
+  document.getElementById('errorCard').style.display = 'none';
+}
+
+function showError(msg) {
+  document.getElementById('errorDetail').textContent = msg;
+  document.getElementById('errorCard').style.display = 'block';
+  document.getElementById('successCard').style.display = 'none';
+}
+
+function resetBtn() {
+  const btn = document.getElementById('shareBtn');
+  btn.disabled = false;
+  btn.innerHTML = `
+    <span id="shareBtnIcon">📍</span>
+    <span>
+      Try Again
+      <span class="btn-marathi">पुन्हा प्रयत्न करा</span>
+    </span>
+  `;
+}
+
+function disableBtn() {
+  const btn = document.getElementById('shareBtn');
+  btn.disabled = true;
+}
+</script>
+</body>
+</html>
