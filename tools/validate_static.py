@@ -125,7 +125,7 @@ else:
             if dashboard_source[i] == "`":
                 slash_count = 0
                 j = i - 1
-                while j >= 0 and dashboard_source[j] == "\\\\":
+                while j >= 0 and dashboard_source[j] == "\\":
                     slash_count += 1
                     j -= 1
                 if slash_count % 2 == 0:
@@ -140,7 +140,7 @@ else:
                 if raw_template[i:i+2] == "${":
                     slash_count = 0
                     j = i - 1
-                    while j >= 0 and raw_template[j] == "\\\\":
+                    while j >= 0 and raw_template[j] == "\\":
                         slash_count += 1
                         j -= 1
                     if slash_count % 2 == 0:
@@ -148,7 +148,7 @@ else:
             if active_interpolations:
                 failures.append("Generated DeliveryApp template has active interpolation; safe extraction needs updating")
             else:
-                node_script = "const generated = `" + raw_template + "\\n`; process.stdout.write(generated);"
+                node_script = "const generated = `" + raw_template + "\n`; process.stdout.write(generated);"
                 decoded = subprocess.run(["node", "-e", node_script], capture_output=True, text=True)
                 if decoded.returncode:
                     failures.append("Generated DeliveryApp template decoding failed: " + decoded.stderr.strip())
