@@ -5308,7 +5308,7 @@ function renderConsumerActivity(cno, deliveries, pendingRows, remarks) {
   if(currentCall) events.push({date:new Date(8640000000000000),icon:'☎️',title:'Current call status',meta:String(currentCall).replace(/_/g,' ').toUpperCase()+' · No timestamp is stored for this remark'});
   events.sort((a,b)=>b.date-a.date);
   const limited=events.slice(0,12);
-  host.innerHTML=limited.length?limited.map(e=>`<div class="activity-item"><div class="activity-marker">${e.icon}</div><div><div class="activity-title">${escHtml(e.title)}</div><div class="activity-meta">${escHtml(e.meta)}</div></div></div>`).join(''):'<div class="activity-empty">No dated delivery, booking or GPS events are available for this consumer.</div>';
+  host.innerHTML=limited.length?limited.map(e=>`<div class="activity-item"><div class="activity-marker">${escHtml(e.icon)}</div><div><div class="activity-title">${escHtml(e.title)}</div><div class="activity-meta">${escHtml(e.meta)}</div></div></div>`).join(''):'<div class="activity-empty">No dated delivery, booking or GPS events are available for this consumer.</div>';
 }
 
 // ================================================================
