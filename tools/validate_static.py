@@ -96,6 +96,78 @@ try:
 except Exception as exc:
     failures.append(f"Invalid DeliveryApp manifest: {exc}")
 
+# Guard against accidental truncation of the single-file Dashboard.
+dashboard_path = PAGES[0]
+if dashboard_path.exists():
+    dashboard_size = dashboard_path.stat().st_size
+    if dashboard_size < 100_000:
+        failures.append(f"Dashboard unexpectedly small ({dashboard_size} bytes); possible partial overwrite")
+    dashboard_source = dashboard_path.read_text(encoding="utf-8")
+    for marker in ("<!DOCTYPE html>", "const DELIVERY_APP_HTML = ", "function getMergedConsumers()", "function showHistory(consumerNo)", "</html>"):
+        if marker not in dashboard_source:
+            failures.append("Dashboard missing required structure: " + marker)
+
+# Extract the generated DeliveryApp template without evaluating any active interpolation.
+template_marker = "const DELIVERY_APP_HTML = "
+template_pos = dashboard_source.find(template_marker)
+if template_pos < 0:
+    failures.append("Could not locate generated DeliveryApp template")
+else:
+    template_pos += len(template_marker)
+    while template_pos < len(dashboard_source) and dashboard_source[template_pos].isspace():
+        template_pos += 1
+    if template_pos >= len(dashboard_source) or dashboard_source[template_pos] != "`":
+        failures.append("Generated DeliveryApp template opening delimiter missing")
+    else:
+        template_pos += 1
+        template_end = -1
+        for i in range(template_pos, len(dashboard_source)):
+            if dashboard_source[i] == "`":
+                slash_count = 0
+                j = i - 1
+                while j >= 0 and dashboard_source[j] == "\\\\":
+                    slash_count += 1
+                    j -= 1
+                if slash_count % 2 == 0:
+                    template_end = i
+                    break
+        if template_end < 0:
+            failures.append("Generated DeliveryApp template closing delimiter missing")
+        else:
+            raw_template = dashboard_source[template_pos:template_end]
+            active_interpolations = []
+            for i in range(len(raw_template) - 1):
+                if raw_template[i:i+2] == "${":
+                    slash_count = 0
+                    j = i - 1
+                    while j >= 0 and raw_template[j] == "\\\\":
+                        slash_count += 1
+                        j -= 1
+                    if slash_count % 2 == 0:
+                        active_interpolations.append(i)
+            if active_interpolations:
+                failures.append("Generated DeliveryApp template has active interpolation; safe extraction needs updating")
+            else:
+                node_script = "const generated = `" + raw_template + "\\n`; process.stdout.write(generated);"
+                decoded = subprocess.run(["node", "-e", node_script], capture_output=True, text=True)
+                if decoded.returncode:
+                    failures.append("Generated DeliveryApp template decoding failed: " + decoded.stderr.strip())
+                else:
+                    generated_parser = PageParser()
+                    generated_parser.feed(decoded.stdout)
+                    duplicate_ids = sorted({x for x in generated_parser.ids if generated_parser.ids.count(x) > 1})
+                    if duplicate_ids:
+                        failures.append("Generated DeliveryApp duplicate IDs: " + str(duplicate_ids))
+                    with tempfile.TemporaryDirectory() as generated_td:
+                        generated_temp = Path(generated_td)
+                        for i, script in enumerate(generated_parser.scripts, 1):
+                            jsfile = generated_temp / f"generated_deliveryapp_{i}.js"
+                            jsfile.write_text(script["text"], encoding="utf-8")
+                            result = subprocess.run(["node", "--check", str(jsfile)], capture_output=True, text=True)
+                            if result.returncode:
+                                failures.append(f"Generated DeliveryApp inline script {i} syntax error: {result.stderr.strip()}")
+                    print(f"Generated DeliveryApp template: checked {len(generated_parser.ids)} IDs and {len(generated_parser.scripts)} inline scripts.")
+
 print(f"Checked {checked_pages} HTML pages and {checked_scripts} inline scripts.")
 if failures:
     print("\n".join(f"FAIL: {x}" for x in failures))
