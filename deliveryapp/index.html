@@ -8,20 +8,24 @@
 <title>Samruddhi DeliveryApp</title>
 </head>
 <body>
-<div class="shell">
-<header class="topbar"><div class="brandmark">S</div><div><b>Samruddhi Gas</b><div class="muted">DeliveryApp</div></div><span id="network" class="pill">Checking…</span></header>
-<main>
-<section id="loginView" class="panel login"><h1>Delivery login</h1><p class="muted">Sign in with your agency delivery account.</p>
-<form id="loginForm"><label>Username<input id="username" autocomplete="username" required></label><label>PIN<input id="pin" type="password" inputmode="numeric" pattern="[0-9]{4,8}" autocomplete="current-password" minlength="4" maxlength="8" required></label><button class="primary" id="loginBtn">Sign in</button></form><p id="loginError" class="error" role="alert"></p><p class="muted tiny">Only delivery accounts can use this app.</p></section>
-<section id="homeView" hidden>
-<div class="panel welcome"><div><h1 id="welcome">My deliveries</h1><p id="todayText" class="muted"></p></div><button id="logoutBtn" class="quiet">Log out</button></div>
-<div class="stats"><div class="stat">Assigned<strong id="assignedCount">0</strong></div><div class="stat">Pending<strong id="pendingCount">0</strong></div><div class="stat">Done on phone<strong id="doneCount">0</strong></div></div>
-<div class="panel"><button id="refreshBtn" class="secondary full">↻ Refresh my bookings</button><input id="search" type="search" placeholder="Search name, consumer no., phone, address" aria-label="Search bookings"></div>
-<div class="notice">Existing office allocation remains unchanged. This app does not transfer bookings or change areas. The list follows the order returned by the backend; office-approved route publishing is not connected yet. “Done on phone” is local progress only, not official HPCL delivery confirmation.</div>
-<p id="message" class="muted" aria-live="polite"></p><div id="bookingList" class="booking-list"></div>
-</section>
-</main><footer>Use HPCL records as the official delivery confirmation source.</footer>
+<div id="app" class="shell">
+  <header class="topbar"><div class="brandmark">S</div><div><div class="brand">Samruddhi Gas</div><div class="subtitle">DeliveryApp</div></div><span id="network" class="net-pill">Checking…</span></header>
+  <main>
+    <section id="loginView" class="panel login-panel">
+      <h1>Delivery login</h1><p class="muted">Sign in with your agency delivery account.</p>
+      <form id="loginForm"><label>Username<input id="username" autocomplete="username" required></label><label>PIN<input id="pin" type="password" inputmode="numeric" pattern="[0-9]{4,8}" autocomplete="current-password" minlength="4" maxlength="8" required></label><button class="primary" type="submit">Sign in</button></form>
+      <div id="loginError" class="error" role="alert"></div><p class="tiny">Your account can only access bookings assigned to your delivery name.</p>
+    </section>
+    <section id="homeView" hidden>
+      <div class="welcome panel"><div><h1 id="welcome">My deliveries</h1><p id="todayText" class="muted"></p></div><button id="logoutBtn" class="quiet">Log out</button></div>
+      <div class="stats"><div class="stat"><span>Assigned</span><strong id="assignedCount">0</strong></div><div class="stat"><span>Pending</span><strong id="pendingCount">0</strong></div><div class="stat"><span>Done on device</span><strong id="doneCount">0</strong></div></div>
+      <div class="panel controls"><div class="row"><button id="refreshBtn" class="secondary">↻ Refresh bookings</button><button id="sortBtn" class="secondary" disabled>Route order: Office publish required</button></div><input id="search" type="search" placeholder="Search name, consumer no., phone, address…" aria-label="Search assigned bookings"></div>
+      <div id="syncNotice" class="notice"><b>Offline-ready status:</b> Assigned order is preserved. Office-approved route publishing is not yet connected. Progress is saved on this phone; “Done” is not an official HPCL delivery record.</div>
+      <div id="message" class="message" aria-live="polite"></div><div id="bookingList" class="booking-list"></div>
+    </section>
+  </main>
+  <footer>Use HPCL records as the official delivery confirmation source.</footer>
 </div>
-<dialog id="detailDialog"><div class="dialog-body"><button id="closeDialog" class="quiet close">Close ✕</button><div id="detailContent"></div></div></dialog>
+<dialog id="stopDialog"><div class="dialog-content"><button id="closeDialog" class="close" aria-label="Close">×</button><div id="stopDetail"></div></div></dialog>
 <script src="app.js"></script>
 </body></html>
