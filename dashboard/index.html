@@ -6146,14 +6146,14 @@ function renderCurrentStop() {
     <div class="current-top">
       <div class="current-num">\${d.routeOrder + 1}</div>
       <div class="current-info">
-        <div class="current-name">\${d.consumerName}</div>
-        <div class="current-address">\${d.address || d.area || '—'}</div>
-        \${d.mobile ? \`<div class="current-mobile" onclick="callNum('\${esc(d.mobile)}')">📞 \${d.mobile}</div>\` : ''}
+        <div class="current-name">\${escHtml(d.consumerName || '')}</div>
+        <div class="current-address">\${escHtml(d.address || d.area || '—')}</div>
+        \${d.mobile ? \`<div class="current-mobile" onclick="callNum('\${esc(d.mobile)}')">📞 \${escHtml(d.mobile)}</div>\` : ''}
       </div>
     </div>
     <div class="current-badges">
       <span class="badge b-cyl">🛢 \${d.qty} Cyl</span>
-      \${d.area ? \`<span class="badge b-area">\${d.area}</span>\` : ''}
+      \${d.area ? \`<span class="badge b-area">\${escHtml(d.area)}</span>\` : ''}
       \${gpsBadge}\${distBadge}
     </div>
     <div class="current-actions">
@@ -6236,11 +6236,11 @@ function compactCard(d, isDone) {
     <div class="card-expand open">
       <div class="card-expand-inner">
         <div class="expand-detail">
-          <strong>Address:</strong> \${d.address || '—'}<br>
-          <strong>Mobile:</strong> \${d.mobile || '—'}<br>
-          <strong>Order No:</strong> \${d.orderNo || '—'}<br>
+          <strong>Address:</strong> \${escHtml(d.address || '—')}<br>
+          <strong>Mobile:</strong> \${escHtml(d.mobile || '—')}<br>
+          <strong>Order No:</strong> \${escHtml(d.orderNo || '—')}<br>
           <strong>Qty:</strong> \${d.qty} cylinder\${d.qty>1?'s':''}<br>
-          \${isDone && d.doneAt ? \`<strong>Done at:</strong> \${d.doneAt}<br>\` : ''}
+          \${isDone && d.doneAt ? \`<strong>Done at:</strong> \${escHtml(d.doneAt)}<br>\` : ''}
           \${isDone && d.gpsAt ? \`<strong>GPS:</strong> \${d.lat?.toFixed(5)}, \${d.lng?.toFixed(5)}\` : ''}
         </div>
         <div class="expand-btns">
@@ -6255,8 +6255,8 @@ function compactCard(d, isDone) {
       <div class="card-main">
         <div class="card-num">\${isDone ? '✓' : d.routeOrder + 1}</div>
         <div class="card-body">
-          <div class="card-name">\${d.consumerName} \${gpsDot}</div>
-          <div class="card-sub">\${d.area || ''}\${d.area && distNote?' · ':''}\${distNote}\${d.qty>1?' · '+d.qty+' cyls':''}</div>
+          <div class="card-name">\${escHtml(d.consumerName || '')} \${gpsDot}</div>
+          <div class="card-sub">\${escHtml(d.area || '')}\${d.area && distNote?' · ':''}\${distNote}\${d.qty>1?' · '+d.qty+' cyls':''}</div>
         </div>
         <div class="card-right">\${rightBtn}</div>
       </div>
