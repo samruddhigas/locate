@@ -1,5 +1,5 @@
 'use strict';
-const CACHE='samruddhi-delivery-v3';
+const CACHE='samruddhi-delivery-v4';
 const ASSETS=['./','./index.html','./app.css','./app.js','./manifest.json','./icon.svg'];
 self.addEventListener('install',e=>e.waitUntil((async()=>{const c=await caches.open(CACHE);await c.addAll(ASSETS);await self.skipWaiting()})()));
 self.addEventListener('activate',e=>e.waitUntil((async()=>{const keys=await caches.keys();await Promise.all(keys.filter(k=>k.startsWith('samruddhi-delivery-')&&k!==CACHE).map(k=>caches.delete(k)));await self.clients.claim()})()));
