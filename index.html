@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Share Location — Samruddhi Gas Agency (HP Gas)</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700&family=DM+Sans:wght@400;500;600;700;800&display=swap');
 
@@ -270,6 +270,7 @@
     line-height: 1.5;
   }
 </style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
 
@@ -315,6 +316,17 @@
     <div class="acc-hint" id="accHint">Please stay still and keep phone near a window…</div>
   </div>
 
+  
+  <div id="pinMapPanel" style="display:none;margin:0 0 20px">
+    <div style="font-size:14px;font-weight:700;margin-bottom:6px">Confirm your home's main entrance</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:10px;line-height:1.5">The marker starts at your GPS position. Drag it onto your main entrance or tap the map. Keep it within 500 metres of your GPS position.</div>
+    <div id="consumerPinMap" style="height:290px;border-radius:12px;border:1px solid var(--border);overflow:hidden;background:#eee"></div>
+    <div id="pinDistance" style="font-size:12px;text-align:center;margin:9px 0 12px;color:var(--text2)">Checking entrance pin…</div>
+    <button id="confirmLocationBtn" class="share-btn" type="button" onclick="submitLocation()" disabled>
+      <span>📍 Confirm & Submit Location</span><span class="btn-marathi">लोकेशन निश्चित करून पाठवा</span>
+    </button>
+  </div>
+
   <!-- Success / Error states -->
   <div class="status-card success" id="successCard">
     <span class="status-icon">✅</span>
@@ -358,277 +370,142 @@
 </div>
 
 <script>
-// ================================================================
-// CONFIG — injected by dashboard OR set here for GitHub Pages
-// ================================================================
-const SB_URL  = window.SB_URL  || 'https://ayxurfmecqccxoomrkcm.supabase.co';
-const SB_ANON = window.SB_ANON || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5eHVyZm1lY3FjY3hvb21ya2NtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2MDYwNzksImV4cCI6MjA4ODE4MjA3OX0.0sU6zonp5yzsXNP-rDuGLn_khSWlf3MA9b10AZxSrns';
 
-// ================================================================
-// INIT
-// ================================================================
-let _sbClient = null;
-let _consumerNo = '';
-let _consumerName = '';
-let _capturing = false;
-let _readings = [];
-let _watchId = null;
+// Secure one-time-token LocationCapture using the NEW Samruddhi project.
+const LPG_API_URL = 'https://uggqsvgxjhvdfkddqzyh.supabase.co/functions/v1/lpg-api';
+let _linkToken='', _apiKey='', _consumerNo='', _consumerName='', _consumerArea='';
+let _capturing=false, _captureReady=false, _readings=[], _watchId=null, _captureTimer=null;
+let _rawPosition=null, _entrancePosition=null, _consumerMap=null, _consumerMarker=null;
 
-window.addEventListener('DOMContentLoaded', async () => {
-  // Read consumer number from URL: ?c=C001234
-  const params = new URLSearchParams(window.location.search);
-  _consumerNo = (params.get('c') || params.get('consumer') || '').trim();
-
-  if (!_consumerNo) {
-    showError('Invalid link. Please use the link sent to you by the gas agency.');
-    disableBtn();
-    return;
+function validPublicKey(key) {
+  try {
+    if (key.startsWith('sb_publishable_')) return true;
+    const parts=key.split('.');
+    if(parts.length!==3) return false;
+    let p=parts[1].replace(/-/g,'+').replace(/_/g,'/');
+    p+='='.repeat((4-p.length%4)%4);
+    const decoded=JSON.parse(atob(p));
+    return decoded.ref==='uggqsvgxjhvdfkddqzyh' && decoded.role!=='service_role';
+  } catch(_) { return false; }
+}
+async function lpgPublicPost(body) {
+  if(!_apiKey || !validPublicKey(_apiKey)) throw new Error('Agency link configuration is invalid.');
+  const r=await fetch(LPG_API_URL,{method:'POST',headers:{'Content-Type':'application/json','apikey':_apiKey,'Authorization':'Bearer '+_apiKey},body:JSON.stringify(body)});
+  let d={}; try{d=await r.json();}catch(_){}
+  if(!r.ok||d.error) throw new Error(d.error||('Location service error ('+r.status+')'));
+  return d;
+}
+window.addEventListener('DOMContentLoaded',async()=>{
+  const p=new URLSearchParams(location.search);
+  _linkToken=(p.get('t')||'').trim(); _apiKey=(p.get('k')||'').trim();
+  if(!/^[A-Za-z0-9_-]{40,100}$/.test(_linkToken)||!validPublicKey(_apiKey)){
+    showError('This secure location link is invalid. Please request a new link from Samruddhi Gas Agency.');
+    disableBtn(); return;
   }
-
-  document.getElementById('consumerNo').textContent = 'Consumer No: ' + _consumerNo;
-
-  // Init Supabase
-  if (SB_URL && SB_ANON && SB_URL !== 'YOUR_SUPABASE_URL') {
-    _sbClient = window.supabase.createClient(SB_URL, SB_ANON);
-    await loadConsumerInfo();
-  } else {
-    document.getElementById('consumerName').textContent = 'Consumer';
-  }
+  document.getElementById('consumerName').textContent='Verifying secure link…';
+  try{
+    const d=await lpgPublicPost({action:'gps_link_info',link_token:_linkToken});
+    _consumerNo=String(d.consumer_no||''); _consumerName=String(d.consumer_name||'ग्राहक'); _consumerArea=String(d.area||'');
+    if(!_consumerNo) throw new Error('Consumer details could not be verified.');
+    document.getElementById('consumerName').textContent=_consumerName;
+    document.getElementById('consumerNo').textContent='Consumer No: '+_consumerNo;
+    if(_consumerArea){const a=document.createElement('div');a.className='consumer-no';a.textContent='Delivery Area: '+_consumerArea;document.getElementById('consumerNo').after(a);}
+  }catch(e){showError(e.message||'This secure location link is invalid or expired.');disableBtn();}
 });
-
-async function loadConsumerInfo() {
-  try {
-    // Try to get consumer name from masters
-    const { data: master } = await _sbClient
-      .from('lpg_masters')
-      .select('consumer_name')
-      .eq('consumer_no', _consumerNo)
-      .maybeSingle();
-
-    if (master) {
-      _consumerName = master.consumer_name;
-      document.getElementById('consumerName').textContent = _consumerName;
-    } else {
-      document.getElementById('consumerName').textContent = 'Consumer';
-    }
-
-    // Check if location already captured
-    const { data: existing } = await _sbClient
-      .from('lpg_gps')
-      .select('status, acc, captured_at')
-      .eq('consumer_no', _consumerNo)
-      .maybeSingle();
-
-    if (existing && existing.status === 'approved') {
-      document.getElementById('alreadyDone').style.display = 'block';
-      document.getElementById('shareBtn').textContent = '📍 Update My Location';
-    }
-  } catch(e) {
-    console.warn('loadConsumerInfo error:', e);
-    document.getElementById('consumerName').textContent = 'Consumer';
-  }
+function startCapture(){
+  if(_capturing||_captureReady)return;
+  if(!navigator.geolocation){showError('Your browser does not support GPS. Please open this link in Chrome.');return;}
+  if(!_linkToken||!_consumerNo||!_apiKey){showError('Secure link verification is incomplete. Request a new link from the agency.');return;}
+  _capturing=true;_readings=[];
+  document.getElementById('shareBtn').disabled=true;
+  document.getElementById('shareBtn').innerHTML='<span class="loading-spinner"></span><span>Getting precise GPS…<span class="btn-marathi">अचूक GPS मिळवत आहे…</span></span>';
+  document.getElementById('successCard').style.display='none';document.getElementById('errorCard').style.display='none';
+  document.getElementById('pinMapPanel').style.display='none';document.getElementById('accMeter').classList.add('visible');
+  _watchId=navigator.geolocation.watchPosition(onGPSReading,onGPSError,{enableHighAccuracy:true,timeout:30000,maximumAge:0});
+  _captureTimer=setTimeout(()=>{if(_capturing){_capturing=false;stopWatch();document.getElementById('accMeter').classList.remove('visible');showError('GPS has not reached the required precision. Move near an open area at your main entrance and try again.');resetBtn();}},60000);
 }
-
-// ================================================================
-// LOCATION CAPTURE
-// ================================================================
-function startCapture() {
-  if (_capturing) return;
-
-  if (!navigator.geolocation) {
-    showError('Your browser does not support GPS. Please try opening this link in Chrome.');
-    return;
-  }
-
-  // Check Supabase config
-  if (!_sbClient) {
-    showError('Configuration error. Please contact the gas agency.');
-    return;
-  }
-
-  _capturing = true;
-  _readings = [];
-
-  // Update button to loading state
-  document.getElementById('shareBtn').disabled = true;
-  document.getElementById('shareBtn').innerHTML = `
-    <span class="loading-spinner"></span>
-    <span>Getting Location…<span class="btn-marathi">लोकेशन मिळवत आहे…</span></span>
-  `;
-
-  // Hide any previous status
-  document.getElementById('successCard').style.display = 'none';
-  document.getElementById('errorCard').style.display = 'none';
-  document.getElementById('alreadyDone').style.display = 'none';
-
-  // Show accuracy meter
-  document.getElementById('accMeter').classList.add('visible');
-
-  // Request permission and start watching
-  _watchId = navigator.geolocation.watchPosition(
-    onGPSReading,
-    onGPSError,
-    { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
-  );
-
-  // Safety timeout — save best reading after 30s regardless
-  setTimeout(() => {
-    if (_capturing) saveBestReading('timeout');
-  }, 30000);
-}
-
-function onGPSReading(pos) {
-  if (!_capturing) return;
-
-  const { latitude: lat, longitude: lng, accuracy: acc } = pos.coords;
-  _readings.push({ lat, lng, acc, ts: Date.now() });
-
+function readingCentre(a){return{lat:a.reduce((s,r)=>s+r.lat,0)/a.length,lng:a.reduce((s,r)=>s+r.lng,0)/a.length};}
+function pointDistance(a,b,c,d){const R=6371000,x=Math.sin((c-a)*Math.PI/360)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin((d-b)*Math.PI/360)**2;return 2*R*Math.asin(Math.sqrt(x));}
+function onGPSReading(pos){
+  if(!_capturing)return;
+  const lat=Number(pos.coords.latitude),lng=Number(pos.coords.longitude),acc=Number(pos.coords.accuracy);
+  if(!Number.isFinite(lat)||lat < -90||lat>90||!Number.isFinite(lng)||lng < -180||lng>180||!Number.isFinite(acc)||acc<0)return;
   updateAccMeter(acc);
-
-  // Auto-save if accuracy ≤ 15m
-  if (acc <= 15) {
-    saveBestReading('auto');
-  }
+  if(acc<=5){_readings.push({lat,lng,acc,ts:Date.now()});if(_readings.length>20)_readings.shift();}
+  const last=_readings.slice(-5);if(last.length<5)return;
+  const c=readingCentre(last),spread=Math.max.apply(null,last.map(r=>pointDistance(c.lat,c.lng,r.lat,r.lng)));
+  if(spread<=5)showEntranceMap(c);
 }
-
-function onGPSError(err) {
-  _capturing = false;
-  stopWatch();
+function onGPSError(err){
+  if(!_capturing)return;_capturing=false;stopWatch();if(_captureTimer)clearTimeout(_captureTimer);
   document.getElementById('accMeter').classList.remove('visible');
-
-  let msg = 'Could not get your location. ';
-  if (err.code === 1) {
-    msg = 'Location permission was denied.\n\nPlease tap Allow when asked, or enable location in your phone settings.\n\nPhone Settings → Browser → Location → Allow';
-  } else if (err.code === 2) {
-    msg = 'GPS signal not available. Please go near a window or step outside and try again.';
-  } else if (err.code === 3) {
-    msg = 'GPS is taking too long. Please go near a window or step outside and try again.';
-  }
-
-  showError(msg);
-  resetBtn();
+  let m='Could not get your location. ';
+  if(err.code===1)m='Location permission denied. Allow location access in browser settings and try again.';
+  else if(err.code===2)m='GPS signal unavailable. Move near a window or step outside and try again.';
+  else if(err.code===3)m='GPS is taking too long. Try again in an open area.';
+  showError(m);resetBtn();
 }
-
-function updateAccMeter(acc) {
-  const fill  = document.getElementById('accFill');
-  const value = document.getElementById('accValue');
-  const hint  = document.getElementById('accHint');
-
-  // Map accuracy to bar: 0m=100%, 100m=0%
-  const pct = Math.max(0, Math.min(100, 100 - (acc - 5)));
-
-  let color, cls, hintText;
-  if (acc <= 15) {
-    color = '#16a34a'; cls = 'green';
-    hintText = '✅ Excellent accuracy! Saving…';
-  } else if (acc <= 40) {
-    color = '#d97706'; cls = 'yellow';
-    hintText = '⏳ Good signal. Getting more precise…';
-  } else {
-    color = '#dc2626'; cls = 'red';
-    hintText = '📡 Searching… move near a window or step outside';
-  }
-
-  fill.style.width = pct + '%';
-  fill.style.background = color;
-  value.textContent = '±' + Math.round(acc) + 'm';
-  value.className = 'acc-value ' + cls;
-  hint.textContent = hintText;
+function updateAccMeter(acc){
+  const fill=document.getElementById('accFill'),value=document.getElementById('accValue'),hint=document.getElementById('accHint');
+  const pct=Math.max(0,Math.min(100,100-(acc-5)));
+  let color,cls,msg;
+  if(acc<=5){color='#16a34a';cls='green';msg='✅ Precise GPS — collecting five stable readings…';}
+  else if(acc<=20){color='#d97706';cls='yellow';msg='⏳ Getting closer — stay still in an open area…';}
+  else{color='#dc2626';cls='red';msg='📡 Weak GPS — move near a window or step outside…';}
+  fill.style.width=pct+'%';fill.style.background=color;value.textContent='±'+Math.round(acc)+'m';value.className='acc-value '+cls;hint.textContent=msg;
 }
-
-async function saveBestReading(reason) {
-  if (!_capturing) return;
-  _capturing = false;
-  stopWatch();
-
-  // Pick reading with best (lowest) accuracy
-  if (!_readings.length) {
-    showError('No GPS readings captured. Please try again.');
-    resetBtn();
-    return;
-  }
-
-  const best = _readings.reduce((a,b) => a.acc < b.acc ? a : b);
-
-  document.getElementById('accMeter').classList.remove('visible');
-  document.getElementById('shareBtn').innerHTML = `
-    <span class="loading-spinner"></span>
-    <span>Saving…<span class="btn-marathi">जतन करत आहे…</span></span>
-  `;
-
-  try {
-    const now = new Date().toISOString();
-    const { error } = await _sbClient.from('lpg_gps').upsert({
-      consumer_no:   _consumerNo,
-      lat:           best.lat,
-      lng:           best.lng,
-      acc:           best.acc,
-      count:         _readings.length,
-      status:        best.acc <= 15 ? 'approved' : 'pending',
-      consumer_name: _consumerName || _consumerNo,
-      source:        'consumer_link',
-      captured_at:   now
-    }, { onConflict: 'consumer_no' });
-
-    if (error) throw error;
-
-    // Success!
-    document.getElementById('successDetail').innerHTML = `
-      📍 Accuracy: <strong>±${Math.round(best.acc)}m</strong><br>
-      Your location has been saved successfully.<br><br>
-      <span style="font-family:'Noto Sans Devanagari',sans-serif;font-size:12px">
-        धन्यवाद! आपले लोकेशन यशस्वीरित्या जतन झाले.
-      </span>
-    `;
-    showSuccess();
-    document.getElementById('shareBtn').style.display = 'none';
-    document.getElementById('msgBox').style.display = 'none';
-
-  } catch(e) {
-    console.error('Save GPS error:', e);
-    showError('Could not save your location. Please check your internet connection and try again.');
-    resetBtn();
-    _capturing = false;
-  }
+function showEntranceMap(c){
+  if(!_capturing)return;_capturing=false;_captureReady=true;stopWatch();if(_captureTimer)clearTimeout(_captureTimer);
+  document.getElementById('accMeter').classList.remove('visible');document.getElementById('shareBtn').style.display='none';document.getElementById('msgBox').style.display='none';
+  const recent=_readings.slice(-5);if(recent.length<5){_captureReady=false;showError('Five precise GPS readings are required.');resetBtn();return;}
+  const spread=Math.max.apply(null,recent.map(r=>pointDistance(c.lat,c.lng,r.lat,r.lng)));
+  if(spread>5){_captureReady=false;showError('GPS readings are unstable. Stand still and try again.');resetBtn();return;}
+  _rawPosition={lat:c.lat,lng:c.lng};_entrancePosition={lat:c.lat,lng:c.lng};
+  document.getElementById('pinMapPanel').style.display='block';
+  if(!window.L){document.getElementById('pinDistance').textContent='Map unavailable; your precise GPS position will be used as the entrance pin.';document.getElementById('confirmLocationBtn').disabled=false;return;}
+  if(!_consumerMap){
+    _consumerMap=L.map('consumerPinMap',{zoomControl:true}).setView([c.lat,c.lng],19);
+    L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',{maxZoom:20,attribution:'© OpenStreetMap contributors © CARTO'}).addTo(_consumerMap);
+    _consumerMap.on('click',e=>{if(_consumerMarker){_consumerMarker.setLatLng(e.latlng);updateEntranceDistance();}});
+  }else _consumerMap.setView([c.lat,c.lng],19);
+  if(_consumerMarker)_consumerMarker.remove();
+  _consumerMarker=L.marker([c.lat,c.lng],{draggable:true}).addTo(_consumerMap);
+  _consumerMarker.on('dragend',updateEntranceDistance);
+  updateEntranceDistance();setTimeout(()=>_consumerMap.invalidateSize(),180);
 }
-
-function stopWatch() {
-  if (_watchId !== null) {
-    navigator.geolocation.clearWatch(_watchId);
-    _watchId = null;
-  }
+function updateEntranceDistance(){
+  const btn=document.getElementById('confirmLocationBtn'),el=document.getElementById('pinDistance');
+  if(!_rawPosition){btn.disabled=true;return;}
+  if(_consumerMarker){const p=_consumerMarker.getLatLng();_entrancePosition={lat:p.lat,lng:p.lng};}
+  const d=pointDistance(_rawPosition.lat,_rawPosition.lng,_entrancePosition.lat,_entrancePosition.lng);
+  if(d>500){btn.disabled=true;el.style.color='#dc2626';el.textContent='⚠️ Entrance pin is '+Math.round(d)+' m away. Move it within 500 m.';}
+  else{btn.disabled=false;el.style.color='#16a34a';el.textContent='Entrance pin offset: '+Math.round(d)+' m. Looks good.';}
 }
-
-// ================================================================
-// UI HELPERS
-// ================================================================
-function showSuccess() {
-  document.getElementById('successCard').style.display = 'block';
-  document.getElementById('errorCard').style.display = 'none';
+async function submitLocation(){
+  if(!_captureReady||!_rawPosition||!_entrancePosition)return;
+  const recent=_readings.slice(-5);if(recent.length<5){showError('Five precise GPS readings are required.');return;}
+  const centre=readingCentre(recent),spread=Math.max.apply(null,recent.map(r=>pointDistance(centre.lat,centre.lng,r.lat,r.lng)));
+  if(spread>5){showError('GPS readings are unstable. Capture again.');return;}
+  const best=recent.reduce((a,b)=>a.acc<b.acc?a:b),btn=document.getElementById('confirmLocationBtn');
+  btn.disabled=true;btn.innerHTML='<span class="loading-spinner"></span><span>Submitting…</span>';
+  try{
+    const result=await lpgPublicPost({action:'gps_link_capture',link_token:_linkToken,raw_lat:centre.lat,raw_lng:centre.lng,pin_lat:_entrancePosition.lat,pin_lng:_entrancePosition.lng,acc:best.acc,readings:recent});
+    document.querySelector('#successCard .status-title').textContent='Location Received — Verification Pending';
+    document.getElementById('successDetail').textContent='Your location has been received and is awaiting agency verification. Thank you. · आपले लोकेशन मिळाले आहे. एजन्सीकडून पडताळणी केली जाईल.';
+    if(result.history_saved===false)document.getElementById('successDetail').textContent+=' (Capture history could not be recorded; the location itself was saved.)';
+    showSuccess();document.getElementById('pinMapPanel').style.display='none';_captureReady=false;_linkToken='';
+    try{const u=new URL(location.href);u.searchParams.delete('t');u.searchParams.delete('k');history.replaceState({},'',u.pathname);}catch(_){}
+  }catch(e){btn.disabled=false;btn.innerHTML='<span>📍 Confirm & Submit Location</span><span class="btn-marathi">लोकेशन निश्चित करून पाठवा</span>';showError(e.message||'Could not save location. Request a new link if this one has expired.');}
 }
-
-function showError(msg) {
-  document.getElementById('errorDetail').textContent = msg;
-  document.getElementById('errorCard').style.display = 'block';
-  document.getElementById('successCard').style.display = 'none';
+function stopWatch(){if(_watchId!==null){navigator.geolocation.clearWatch(_watchId);_watchId=null;}}
+function showSuccess(){document.getElementById('successCard').style.display='block';document.getElementById('errorCard').style.display='none';}
+function showError(msg){document.getElementById('errorDetail').textContent=msg;document.getElementById('errorCard').style.display='block';document.getElementById('successCard').style.display='none';}
+function resetBtn(){
+  const b=document.getElementById('shareBtn');b.disabled=false;b.style.display='';b.innerHTML='<span id="shareBtnIcon">📍</span><span>Try Again<span class="btn-marathi">पुन्हा प्रयत्न करा</span></span>';
+  _captureReady=false;document.getElementById('pinMapPanel').style.display='none';
 }
+function disableBtn(){document.getElementById('shareBtn').disabled=true;document.getElementById('pinMapPanel').style.display='none';}
 
-function resetBtn() {
-  const btn = document.getElementById('shareBtn');
-  btn.disabled = false;
-  btn.innerHTML = `
-    <span id="shareBtnIcon">📍</span>
-    <span>
-      Try Again
-      <span class="btn-marathi">पुन्हा प्रयत्न करा</span>
-    </span>
-  `;
-}
-
-function disableBtn() {
-  const btn = document.getElementById('shareBtn');
-  btn.disabled = true;
-}
 </script>
 </body>
 </html>
