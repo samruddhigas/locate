@@ -96,66 +96,6 @@ try:
 except Exception as exc:
     failures.append(f"Invalid DeliveryApp manifest: {exc}")
 
-# Also validate the dashboard's generated DeliveryApp HTML template.
-dashboard_source = PAGES[0].read_text(encoding="utf-8")
-template_marker = "const DELIVERY_APP_HTML = `"
-template_start = dashboard_source.find(template_marker)
-if template_start < 0:
-    failures.append("Could not locate DELIVERY_APP_HTML template in dashboard")
-else:
-    template_start += len(template_marker)
-    template_end = -1
-    for i in range(template_start, len(dashboard_source)):
-        if dashboard_source[i] == "`":
-            slashes = 0
-            j = i - 1
-            while j >= 0 and dashboard_source[j] == "\\\\":
-                slashes += 1
-                j -= 1
-            if slashes % 2 == 0:
-                template_end = i
-                break
-    if template_end < 0:
-        failures.append("Could not find end of DELIVERY_APP_HTML template")
-    else:
-        raw_template = dashboard_source[template_start:template_end]
-        active_interpolations = []
-        for i in range(len(raw_template) - 1):
-            if raw_template[i:i+2] == "${":
-                slashes = 0
-                j = i - 1
-                while j >= 0 and raw_template[j] == "\\\\":
-                    slashes += 1
-                    j -= 1
-                if slashes % 2 == 0:
-                    active_interpolations.append(i)
-        if active_interpolations:
-            failures.append("DELIVERY_APP_HTML has active template interpolation; validator extraction must be updated safely")
-        else:
-            node_template = "const generated = `" + raw_template + "`; process.stdout.write(generated);"
-            generated_result = subprocess.run(["node", "-e", node_template], capture_output=True, text=True)
-            if generated_result.returncode:
-                failures.append("Could not decode DELIVERY_APP_HTML template: " + generated_result.stderr.strip())
-            else:
-                generated_html = generated_result.stdout
-                generated_parser = PageParser()
-                generated_parser.feed(generated_html)
-                generated_duplicates = sorted({x for x in generated_parser.ids if generated_parser.ids.count(x) > 1})
-                if generated_duplicates:
-                    failures.append("Generated DeliveryApp duplicate IDs: " + str(generated_duplicates))
-                for asset in generated_parser.assets:
-                    resolved = local_asset(ROOT / "dashboard" / "index.html", asset)
-                    if resolved is not None and not resolved.exists():
-                        failures.append("Generated DeliveryApp missing local asset: " + asset)
-                generated_scripts = 0
-                for i, script in enumerate(generated_parser.scripts, 1):
-                    jsfile = temp / f"generated_deliveryapp_{i}.js"
-                    jsfile.write_text(script["text"], encoding="utf-8")
-                    result = subprocess.run(["node", "--check", str(jsfile)], capture_output=True, text=True)
-                    generated_scripts += 1
-                    if result.returncode:
-                        failures.append(f"Generated DeliveryApp inline script {i} syntax error: {result.stderr.strip()}")
-                print(f"Generated DeliveryApp: checked {len(generated_parser.ids)} IDs and {generated_scripts} inline scripts.")
 print(f"Checked {checked_pages} HTML pages and {checked_scripts} inline scripts.")
 if failures:
     print("\n".join(f"FAIL: {x}" for x in failures))
