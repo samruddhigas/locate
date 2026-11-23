@@ -4723,7 +4723,7 @@ function populatePackageDropdown(){
     else if (p.includes('NON-SUBSIDIZED')) label = '14.2 KG Non-Subsidized';
     else if (p.includes('SUBSIDIZED') || p.includes('SUBSIDY')) label = '14.2 KG Subsidized';
     else if (p.length > 35) label = p.substring(0, 35) + '…';
-    sel.innerHTML += `<option value="${escAttr(p)}" title="${escAttr(p)}">${escHtml(label)}</option>`;
+    sel.innerHTML += `<option value="${p.replace(/"/g,'&quot;')}" title="${p.replace(/"/g,'&quot;')}">${label}</option>`;
   });
   // Restore selection if still valid
   if (current && [...sel.options].some(o => o.value === current)) sel.value = current;
@@ -5188,7 +5188,7 @@ function showHistory(consumerNo){
   setText('modalTitle',r.consumerName||'Consumer '+cno);
   const hasDel=deliveries.length>0;
   document.getElementById('modalSubtitle').innerHTML=
-    `No: ${escHtml(cno)} | ${escHtml(r.area||'')} | ${escHtml(r.mobile||'')} `+
+    `No: ${cno} | ${r.area||''} | ${r.mobile||''} `+
     (hasDel?'<span style="background:rgba(63,185,80,.15);color:var(--green);font-size:10px;padding:1px 6px;border-radius:8px">✓ Info from latest delivery</span>':'<span style="background:rgba(139,148,158,.12);color:var(--text3);font-size:10px;padding:1px 6px;border-radius:8px">Masters only</span>');
   setText('modalCylCount',currentFYQty+' cyls this FY · '+totalQty+' total all FY');
   const mobileDigits=String(r.mobile||'').replace(/\D/g,'');
@@ -6146,14 +6146,14 @@ function renderCurrentStop() {
     <div class="current-top">
       <div class="current-num">\${d.routeOrder + 1}</div>
       <div class="current-info">
-        <div class="current-name">\${escHtml(d.consumerName || '')}</div>
-        <div class="current-address">\${escHtml(d.address || d.area || '—')}</div>
-        \${d.mobile ? \`<div class="current-mobile" onclick="callNum('\${esc(d.mobile)}')">📞 \${escHtml(d.mobile)}</div>\` : ''}
+        <div class="current-name">\${d.consumerName}</div>
+        <div class="current-address">\${d.address || d.area || '—'}</div>
+        \${d.mobile ? \`<div class="current-mobile" onclick="callNum('\${esc(d.mobile)}')">📞 \${d.mobile}</div>\` : ''}
       </div>
     </div>
     <div class="current-badges">
       <span class="badge b-cyl">🛢 \${d.qty} Cyl</span>
-      \${d.area ? \`<span class="badge b-area">\${escHtml(d.area)}</span>\` : ''}
+      \${d.area ? \`<span class="badge b-area">\${d.area}</span>\` : ''}
       \${gpsBadge}\${distBadge}
     </div>
     <div class="current-actions">
@@ -6236,11 +6236,11 @@ function compactCard(d, isDone) {
     <div class="card-expand open">
       <div class="card-expand-inner">
         <div class="expand-detail">
-          <strong>Address:</strong> \${escHtml(d.address || '—')}<br>
-          <strong>Mobile:</strong> \${escHtml(d.mobile || '—')}<br>
-          <strong>Order No:</strong> \${escHtml(d.orderNo || '—')}<br>
+          <strong>Address:</strong> \${d.address || '—'}<br>
+          <strong>Mobile:</strong> \${d.mobile || '—'}<br>
+          <strong>Order No:</strong> \${d.orderNo || '—'}<br>
           <strong>Qty:</strong> \${d.qty} cylinder\${d.qty>1?'s':''}<br>
-          \${isDone && d.doneAt ? \`<strong>Done at:</strong> \${escHtml(d.doneAt)}<br>\` : ''}
+          \${isDone && d.doneAt ? \`<strong>Done at:</strong> \${d.doneAt}<br>\` : ''}
           \${isDone && d.gpsAt ? \`<strong>GPS:</strong> \${d.lat?.toFixed(5)}, \${d.lng?.toFixed(5)}\` : ''}
         </div>
         <div class="expand-btns">
@@ -6255,8 +6255,8 @@ function compactCard(d, isDone) {
       <div class="card-main">
         <div class="card-num">\${isDone ? '✓' : d.routeOrder + 1}</div>
         <div class="card-body">
-          <div class="card-name">\${escHtml(d.consumerName || '')} \${gpsDot}</div>
-          <div class="card-sub">\${escHtml(d.area || '')}\${d.area && distNote?' · ':''}\${distNote}\${d.qty>1?' · '+d.qty+' cyls':''}</div>
+          <div class="card-name">\${d.consumerName} \${gpsDot}</div>
+          <div class="card-sub">\${d.area || ''}\${d.area && distNote?' · ':''}\${distNote}\${d.qty>1?' · '+d.qty+' cyls':''}</div>
         </div>
         <div class="card-right">\${rightBtn}</div>
       </div>
@@ -8195,7 +8195,7 @@ function renderDMTable() {
     const pendPct = Math.round((r.pendCount / maxPend) * 100);
     const avgCls  = r.avgPerDay >= 20 ? 'color:var(--green)' : r.avgPerDay >= 10 ? 'color:var(--yellow)' : 'color:var(--text2)';
     return `<tr>
-      <td style="font-weight:600">${escHtml(r.name)}</td>
+      <td style="font-weight:600">${r.name}</td>
       <td style="text-align:right">
         <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
           <div style="width:60px;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
@@ -8323,7 +8323,7 @@ function initRouteTab() {
   const sel = document.getElementById('routeDMSelect');
   if (!sel) return;
   sel.innerHTML = '<option value="">— All (overview map) —</option>' +
-    dms.map(d => \`<option value="\${escAttr(d)}">\${escHtml(d)}</option>\`).join('');
+    dms.map(d => `<option value="${escAttr(d)}">${d}</option>`).join('');
 
   // Load centrally stored saved locations
   loadCentralLocations();
@@ -8336,7 +8336,7 @@ function _restoreDepotDisplay() {
   try {
     const d = JSON.parse(saved);
     const el = document.getElementById('depotDisplay');
-    if (el) el.innerHTML = \`<span style="color:var(--green)">📍 \${escHtml(d.label || (d.lat.toFixed(5)+', '+d.lng.toFixed(5)))}</span>\`;
+    if (el) el.innerHTML = `<span style="color:var(--green)">📍 ${d.label || (d.lat.toFixed(5)+', '+d.lng.toFixed(5))}</span>`;
   } catch(e) {}
 }
 
