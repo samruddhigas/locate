@@ -8468,6 +8468,7 @@ function haversine(a, b) {
 }
 
 // Nearest-neighbour TSP approximation
+// Bounded 2-opt refinement reduces the straight-line round-trip estimate.
 function twoOptImprove(depot, route) {
   if (route.length < 3) return route;
   let improved = true, passes = 0;
