@@ -1,5 +1,6 @@
-<!-- Samruddhi Gas Agency Dashboard: latest saved source build v32, reviewed against active lpg-api v29. -->
+<!-- Samruddhi Gas Agency Dashboard: latest audited source build v35, reviewed against active lpg-api v29. -->
 <!-- This file does not include service-role credentials. Live DB workflows still require in-browser verification. -->
+<!-- Audit notes: fixed numeric keyset paging, mutation result checks, report source/XSS, GPS legacy review policy, role gates and secure consumer capture URL. -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,7 +8,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<title>Samruddhi Gas Agency (HP Gas) — Dashboard v32</title>
+<title>Samruddhi Gas Agency (HP Gas) — Dashboard v35</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -971,7 +972,7 @@ body.delivery-restricted .logged-in-bar #loggedInRole { display:none !important;
 </style>
 </head>
 <body>
-<div style="padding:10px 16px;background:#fff3cd;color:#664d03;border-bottom:1px solid #ffecb5;font:600 13px system-ui">API-ONLY DASHBOARD · Build v32 · Connected only to the NEW Supabase project. Browser database requests use the authenticated lpg-api; no service-role key is stored here. Please verify login and live data sync in your browser before relying on this build. Backup/Restore and some advanced security controls are not available in the current deployment and are disabled below.</div>
+<div style="padding:10px 16px;background:#fff3cd;color:#664d03;border-bottom:1px solid #ffecb5;font:600 13px system-ui">API-ONLY DASHBOARD · Build v35 · Connected only to the NEW Supabase project. Browser database requests use the authenticated lpg-api; no service-role key is stored here. PIN-based live login and database read/write testing are still required before production use. Backup/Restore and some advanced security controls are not available in the current deployment and are disabled below.</div>
 
 <!-- ================================================================
      LOGIN OVERLAY
@@ -996,8 +997,8 @@ body.delivery-restricted .logged-in-bar #loggedInRole { display:none !important;
       <div class="login-hint" onclick="showSupabaseConfig()" style="margin-top:4px">🔗 Configure Supabase connection</div>
     </div>
 
-    <!-- STEP 2: Enter PIN -->
-    <div id="loginStep2" style="display:none">      <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+    <!-- STEP 2: Enter PIN -->    <div id="loginStep2" style="display:none">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
         <button onclick="backToStep1()" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text2);font-size:12px;cursor:pointer">← Back</button>
         <span id="loginNameDisplay" style="font-size:15px;font-weight:700"></span>
         <span id="loginRoleDisplay" class="user-role-badge"></span>
@@ -1020,7 +1021,7 @@ body.delivery-restricted .logged-in-bar #loggedInRole { display:none !important;
       <div class="login-label">Supabase URL</div>
       <input id="loginSbUrl" style="width:100%;padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;outline:none;margin-bottom:8px;font-family:monospace" placeholder="https://xxx.supabase.co">
       <div class="login-label">Publishable / anon key (never service-role)</div>
-      <input id="loginSbKey" style="width:100%;padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;outline:none;margin-bottom:12px;font-family:monospace" placeholder="eyJ…" type="password">
+      <input id="loginSbKey" style="width:100%;padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;outline:none;margin-bottom:12px;font-family:monospace" placeholder="sb_publishable_… or legacy anon public key" type="password">
       <button class="login-btn" onclick="saveSupabaseFromLogin()">Connect & Continue</button>
       <div id="loginSbErr" style="font-size:11px;color:var(--red);text-align:center;margin-top:8px"></div>
     </div>
@@ -1029,17 +1030,18 @@ body.delivery-restricted .logged-in-bar #loggedInRole { display:none !important;
     <div id="loginAdminSetup" style="display:none">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
         <button onclick="backToStep1()" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text2);font-size:12px;cursor:pointer">← Back</button>
-        <span style="font-size:14px;font-weight:700">Create Admin Account</span>
+        <span style="font-size:14px;font-weight:700">Reset Existing Admin PIN</span>
       </div>
-      <div class="login-label">Admin Name</div>
-      <input id="adminNameInput" style="width:100%;padding:11px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;outline:none;margin-bottom:12px" placeholder="Your name…" value="Admin">
+      <div class="login-label">Admin username (fixed)</div>
+      <input id="adminNameInput" value="admin" readonly style="width:100%;padding:11px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;margin-bottom:12px">
+      <div style="font-size:11px;color:var(--text2);margin:-6px 0 12px">This resets the existing admin account. It does not create a new admin row.</div>
       <div class="login-label">One-time setup secret (configured in new project Edge Function secrets)</div>
       <input id="adminSetupSecret" type="password" autocomplete="off" style="width:100%;padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;outline:none;margin-bottom:12px" placeholder="Paste bootstrap secret">
       <div class="login-label">Set 4–8 digit PIN</div>
       <input class="pin-input" id="adminPin1" type="password" inputmode="numeric" maxlength="8" placeholder="••••" style="width:100%;margin-bottom:8px">
       <div class="login-label">Confirm PIN</div>
       <input class="pin-input" id="adminPin2" type="password" inputmode="numeric" maxlength="8" placeholder="••••" style="width:100%;margin-bottom:12px">
-      <button class="login-btn" onclick="createAdminAccount()">Create Admin Account</button>
+      <button class="login-btn" onclick="createAdminAccount()">Reset Admin PIN</button>
       <div class="login-err" id="adminSetupErr"></div>
     </div>
   </div>
@@ -1850,8 +1852,8 @@ body.delivery-restricted .logged-in-bar #loggedInRole { display:none !important;
             <div style="font-size:11px;color:var(--text2);margin-top:2px;">Review, approve or correct GPS coordinates submitted by delivery men</div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <label class="btn" style="cursor:pointer;font-size:12px;">
-              📥 Import GPS File
+            <label id="gpsFileImportLabel" class="btn" style="cursor:pointer;font-size:12px;">
+              📥 Import GPS File (Admin)
               <input type="file" accept=".json" style="display:none" onchange="handleGPSFileImport(this)">
             </label>
             <button class="btn" onclick="syncGPSFromSupabase()" style="font-size:12px;">☁️ Sync Cloud</button>
@@ -1911,7 +1913,7 @@ body.delivery-restricted .logged-in-bar #loggedInRole { display:none !important;
               <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
                 <button onclick="approveDetailPin()" style="padding:11px;border-radius:10px;border:none;font-size:12px;font-weight:800;cursor:pointer;background:var(--green);color:#fff;">✅ Approve</button>
                 <button onclick="approveDetailPinCorrected()" style="padding:11px;border-radius:10px;border:none;font-size:12px;font-weight:800;cursor:pointer;background:var(--blue);color:#fff;">📍 Approve Corrected</button>
-                <button onclick="rejectApproval()" style="padding:11px;border-radius:10px;border:none;font-size:12px;font-weight:800;cursor:pointer;background:var(--card);border:1px solid var(--border);color:var(--red);">✕ Reject</button>
+                <button id="rejectGpsBtn" onclick="rejectApproval()" style="padding:11px;border-radius:10px;border:none;font-size:12px;font-weight:800;cursor:pointer;background:var(--card);border:1px solid var(--border);color:var(--red);">✕ Reject (Admin)</button>
               </div>
             </div>
           </div>
@@ -1994,9 +1996,9 @@ body.delivery-restricted .logged-in-bar #loggedInRole { display:none !important;
               <div class="upload-status" id="status2"></div>
             </div>
             <div class="upload-card">
-              <div class="upload-title">👥 Consumer Masters</div>
-              <div class="upload-desc">Upload fortnightly or monthly. Contains all consumer info, hose validity, eKYC, and bank data. Delivery records take priority over master data.</div>
-              <div class="upload-zone" id="zone3" onclick="triggerUpload('file3')" ondragover="dragOver(event,'zone3')" ondragleave="dragLeave('zone3')" ondrop="dropFile(event,'file3')">                <div class="upload-icon">📂</div>
+              <div class="upload-title">👥 Consumer Masters</div>              <div class="upload-desc">Upload fortnightly or monthly. Contains all consumer info, hose validity, eKYC, and bank data. Delivery records take priority over master data.</div>
+              <div class="upload-zone" id="zone3" onclick="triggerUpload('file3')" ondragover="dragOver(event,'zone3')" ondragleave="dragLeave('zone3')" ondrop="dropFile(event,'file3')">
+                <div class="upload-icon">📂</div>
                 <p>Drop file or <span class="browse">browse</span></p>
                 <p style="font-size:10px;color:var(--text3);margin-top:4px">Sheet: "Consumer Masters"</p>
                 <input type="file" id="file3" accept=".xlsx,.xls,.csv" onchange="handleUpload(this,'masters')">
@@ -2149,9 +2151,9 @@ body.delivery-restricted .logged-in-bar #loggedInRole { display:none !important;
               <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
                 <div style="flex:1">
                   <div style="font-size:13px;font-weight:700;color:var(--red)">⚠️ Clear Everything</div>
-                  <div style="font-size:11px;color:var(--text2);margin-top:2px">Deletes all data from Supabase and memory. Cannot be undone.</div>
+                  <div style="font-size:11px;color:var(--text2);margin-top:2px">A one-click full database wipe is deliberately disabled. Use approved, table-specific maintenance only.</div>
                 </div>
-                <button class="btn" onclick="clearData('all')" style="font-size:12px;background:var(--red);color:#fff;border-color:var(--red)">🗑 Clear ALL Data</button>
+                <button class="btn" disabled title="Full wipe is disabled to protect production data" style="font-size:12px;opacity:.55;cursor:not-allowed">🔒 Full Wipe Disabled</button>
               </div>
 
             </div>
@@ -2188,7 +2190,7 @@ body.delivery-restricted .logged-in-bar #loggedInRole { display:none !important;
               <p>In your Supabase project → <strong>Settings → API</strong>. Copy two values:</p>
               <ul style="margin:8px 0 0 16px;font-size:12px;line-height:2;color:var(--text2)">
                 <li><strong style="color:var(--text)">Project URL</strong> — looks like <code style="background:var(--surface2);padding:1px 5px;border-radius:3px">https://xxxx.supabase.co</code></li>
-                <li><strong style="color:var(--text)">anon public key</strong> — long string starting with <code style="background:var(--surface2);padding:1px 5px;border-radius:3px">eyJ...</code></li>
+                <li><strong style="color:var(--text)">publishable key or legacy anon public key</strong> — never use a service-role key</li>
               </ul>
             </div>
           </div>
@@ -2203,7 +2205,7 @@ body.delivery-restricted .logged-in-bar #loggedInRole { display:none !important;
               </div>
               <div class="config-row" style="margin-bottom:12px;">
                 <span class="config-label">Anon Key:</span>
-                <input type="text" class="config-input" id="sbKey" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." style="flex:1;">
+                <input type="text" class="config-input" id="sbKey" placeholder="sb_publishable_… or legacy anon public key" style="flex:1;">
               </div>
               <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                 <button class="btn btn-primary" onclick="saveSupabaseConfig()">💾 Save & Connect</button>
@@ -2216,32 +2218,32 @@ body.delivery-restricted .logged-in-bar #loggedInRole { display:none !important;
           <div class="setup-step">
             <div class="setup-num">4</div>
             <div class="setup-content">
-              <h4>Initialize Database Tables</h4>
-              <p>Click once to create all required tables in your Supabase project. Safe to run multiple times.</p>
+              <h4>Verify Existing Database Schema</h4>
+              <p>Checks whether the required existing tables are reachable through your authenticated lpg-api session. This does not create, alter or delete tables.</p>
               <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px;">
-                <button class="btn btn-primary" onclick="initSupabaseTables()">🗄️ Initialize Database</button>
+                <button class="btn btn-primary" onclick="initSupabaseTables()">🗄️ Verify Existing Schema</button>
                 <span id="sbInitStatus" style="font-size:12px;"></span>
               </div>
-              <p style="margin-top:10px;font-size:11px;color:var(--text3);">Creates tables: lpg_masters, lpg_delivered, lpg_pending, lpg_remarks, lpg_gps</p>
+              <p style="margin-top:10px;font-size:11px;color:var(--text3);">Read-only verification: lpg_masters, lpg_delivered, lpg_pending, lpg_remarks and the office GPS registry. Missing tables require a reviewed migration in Supabase SQL Editor.</p>
             </div>
           </div>
 
           <div class="setup-step" style="border:1px solid rgba(46,204,113,.3);background:rgba(46,204,113,.04);border-radius:12px;padding:16px;">
             <div class="setup-num" style="background:var(--green);">5</div>
             <div class="setup-content">
-              <h4 style="color:var(--green);">🔒 Enable Data Security (Recommended)</h4>
-              <p>Locks down your database so delivery app phones can <strong>only write GPS</strong> — they cannot read consumer records, masters, or any other data. Even if the delivery app file is forwarded to someone else, your data stays safe.</p>
+              <h4 style="color:var(--green);">🔒 Review Data Security</h4>
+              <p>Review the row-level security configuration. The Dashboard cannot execute arbitrary SQL through lpg-api; apply only reviewed policies in Supabase SQL Editor after checking compatibility with the authenticated API.</p>
               <div style="margin:10px 0;padding:10px 14px;background:var(--surface);border-radius:8px;font-size:11px;color:var(--text2);line-height:1.8;">
-                <div>✅ <strong style="color:var(--text)">Masters / Delivered / Pending / Remarks</strong> — no phone access at all</div>
-                <div>✅ <strong style="color:var(--text)">GPS table</strong> — phones can write only, cannot read</div>
-                <div>✅ <strong style="color:var(--text)">Dashboard</strong> — full access (uses service key, never shared)</div>
+                <div>✅ <strong style="color:var(--text)">Masters / Delivered / Pending / Remarks</strong> — accessed only through authenticated, role-checked lpg-api operations</div>
+                <div>✅ <strong style="color:var(--text)">GPS registry</strong> — office review and delivery capture use dedicated authenticated API actions</div>
+                <div>✅ <strong style="color:var(--text)">Dashboard</strong> — authenticated role-based access through lpg-api; service credentials remain server-side</div>
                 <div>✅ <strong style="color:var(--text)">Delivery app HTML</strong> — sensitive fields stripped before sharing</div>
               </div>
               <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px;">
-                <button class="btn btn-primary" style="background:var(--green);border-color:var(--green);" onclick="enableDatabaseSecurity()">🔒 Enable Security</button>
+                <button class="btn btn-secondary" disabled title="SQL policy execution is not exposed by the active API">🔒 Manual SQL review required</button>
                 <span id="sbSecurityStatus" style="font-size:12px;"></span>
               </div>
-              <p style="margin-top:10px;font-size:11px;color:var(--text3);">Runs Row Level Security policies on all tables. Safe to run again if needed.</p>
+              <p style="margin-top:10px;font-size:11px;color:var(--text3);">No policies are changed by this Dashboard. Review the current policies and apply an approved migration in Supabase SQL Editor.</p>
             </div>
           </div>
 
@@ -2251,7 +2253,7 @@ body.delivery-restricted .logged-in-bar #loggedInRole { display:none !important;
               <h4>Upload All Data to Supabase</h4>
               <p>Push all data to Supabase cloud. Do this once after connecting — takes 1-2 minutes for large datasets.</p>
               <div style="margin-top:10px">
-                <button class="btn btn-primary" id="migrateBtn" onclick="migrateToSupabase()">⬆️ Upload to Supabase</button>
+                <button class="btn btn-secondary" id="migrateBtn" disabled aria-disabled="true" title="Disabled: legacy migration can overwrite or delete production data">Legacy bulk migration disabled</button>
               </div>
               <!-- Progress UI -->
               <div id="migrateProgress" style="display:none;margin-top:12px">
@@ -2298,11 +2300,11 @@ body.delivery-restricted .logged-in-bar #loggedInRole { display:none !important;
           <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px">
             <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Your GitHub Pages URL</div>
             <div style="display:flex;gap:8px;align-items:center">
-              <input id="githubPagesUrl" style="flex:1;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none" placeholder="https://yourusername.github.io/locate/?c=" value="">
+              <input id="githubPagesUrl" style="flex:1;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none" placeholder="https://samruddhigas.github.io/locate" value="">
               <button class="btn btn-primary" onclick="saveGithubUrl()" style="font-size:12px;white-space:nowrap">Save URL</button>
             </div>
             <div style="font-size:11px;color:var(--text3);margin-top:6px">
-              Example: <code style="background:var(--surface2);padding:1px 6px;border-radius:3px">https://samruddhigas.github.io/locate/?c=</code>
+              Example: <code style="background:var(--surface2);padding:1px 6px;border-radius:3px">https://samruddhigas.github.io/locate</code>
             </div>
           </div>
 
@@ -2325,7 +2327,7 @@ body.delivery-restricted .logged-in-bar #loggedInRole { display:none !important;
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
             <span id="locTableCount" style="font-size:12px;color:var(--text2)">—</span>
             <button class="btn btn-primary" onclick="openAllWhatsApp()" style="font-size:12px">📲 Select filtered consumers</button>
-            <button class="btn" onclick="copyAllLinks()" style="font-size:12px">📋 Copy All Links</button>
+            <button class="btn" onclick="copyAllLinks()" style="font-size:12px">📋 Prepare Secure Campaign</button>
           </div>
 
           <!-- Table -->
@@ -2409,13 +2411,13 @@ body.delivery-restricted .logged-in-bar #loggedInRole { display:none !important;
                 <span style="font-size:13px;font-weight:700">Last Backup</span>
                 <button class="btn" disabled aria-disabled="true" title="Backup service is not deployed" style="font-size:11px;padding:4px 10px">Unavailable</button>
               </div>
-              <div id="backupStatusBody" style="font-size:12px;color:var(--text2)">Loading…</div>
+              <div id="backupStatusBody" style="font-size:12px;color:var(--text2)">Backup service is not deployed. No automatic backup status can be confirmed.</div>
             </div>
 
             <!-- Manual backup -->
             <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px">
               <div style="font-size:13px;font-weight:700;margin-bottom:6px">▶ Run Backup Now</div>
-              <p style="font-size:12px;color:var(--text2);margin-bottom:10px">Manually trigger a full backup immediately. Runs in background (~30 seconds).</p>
+              <p style="font-size:12px;color:var(--text2);margin-bottom:10px">Manual backup is unavailable until a new-project backup service is deployed.</p>
               <button class="btn btn-primary" id="backupNowBtn" disabled aria-disabled="true" title="Backup service is not deployed" style="font-size:12px">💾 Backup not configured</button>
               <div id="backupNowResult" style="font-size:12px;margin-top:8px"></div>
             </div>
@@ -2614,7 +2616,7 @@ async function newProjectApiPost(body, token) {
   return result;
 }
 function assertNewProjectUrl(url) { if (String(url || '').replace(/\/$/, '') !== NEW_PROJECT_URL) throw new Error('This file is for the NEW Supabase project only.'); }
-function isAllowedClientKey(key) { try { if (!key) return false; if (key.startsWith('sb_publishable_')) return true; const p = key.split('.')[1]; if (!p) return false; const payload = JSON.parse(atob(p.replace(/-/g,'+').replace(/_/g,'/'))); return payload.ref === 'uggqsvgxjhvdfkddqzyh' && payload.role !== 'service_role'; } catch (_) { return false; } }
+function isAllowedClientKey(key) { try { if (!key) return false; if (key.startsWith('sb_publishable_')) return true; const p = key.split('.')[1]; if (!p) return false; let b64=p.replace(/-/g,'+').replace(/_/g,'/'); b64 += '='.repeat((4-b64.length%4)%4); const payload = JSON.parse(atob(b64)); return payload.ref === 'uggqsvgxjhvdfkddqzyh' && payload.role !== 'service_role'; } catch (_) { return false; } }
 
 
 // ================================================================
@@ -2709,6 +2711,44 @@ function normalizeFyKeyForDatabase(value) {
   const start = 2000 + Number(m[1]);
   return `FY${start}-${m[2]}`;
 }
+function normalizedIdentityText(value) { return String(value ?? '').trim().replace(/\s+/g, ' ').toLowerCase(); }
+function dateKey(value) {
+  const d = parseDate(value);
+  if (!d) return '';
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function verifyDeliveredImportRows(rows) {
+  const byOrder = new Map();
+  Object.values(STATE.deliveredFY || {}).forEach(list => (list || []).forEach(r => byOrder.set(String(r.orderNo || '').trim(), r)));
+  const missing = [], mismatched = [];
+  rows.forEach(row => {
+    const key = String(row.orderNo || '').trim(), saved = byOrder.get(key);
+    if (!saved) { missing.push(key); return; }
+    if (String(saved.consumerNo || '').trim() !== String(row.consumerNo || '').trim() || String(saved.cashMemo || '').trim() !== String(row.cashMemo || '').trim() || dateKey(saved.deliveryDate) !== dateKey(row.deliveryDate) || Number(saved.qty || 0) !== Number(row.qty || 0)) mismatched.push(key);
+  });
+  if (missing.length || mismatched.length) throw new Error('Delivered import read-back mismatch: ' + missing.length + ' missing Order No(s), ' + mismatched.length + ' mismatched identity/quantity row(s). Samples: ' + [...missing.slice(0,3),...mismatched.slice(0,3)].join(', '));
+  return rows.length;
+}
+function verifyPendingImportRows(expectedRows) {
+  const expected = expectedRows.filter(r => !r._removedFromUpload), actual = Array.isArray(STATE.pending) ? STATE.pending : [];
+  const keyOf = r => String(r.orderNo || '').trim() + '|' + String(r.consumerNo || '').trim();
+  const actualKeys = new Set(actual.map(keyOf));
+  const missing = expected.filter(r => !actualKeys.has(keyOf(r)));
+  const extra = actual.filter(r => !expected.some(e => keyOf(e) === keyOf(r)));
+  if (missing.length || extra.length || actual.length !== expected.length) throw new Error('Pending cloud read-back differs from uploaded file: expected ' + expected.length + ', found ' + actual.length + ', missing ' + missing.length + ', unexpected ' + extra.length + '.');
+  return actual.length;
+}
+function verifyMasterImportRows(expectedRows) {
+  const remote = new Map((STATE.masters || []).map(r => [String(r.consumerNo || '').trim(), r]));
+  const missing = [], mismatched = [];
+  expectedRows.forEach(r => {
+    const key=String(r.consumerNo||'').trim(), saved=remote.get(key);
+    if(!saved){missing.push(key);return;}
+    if(normalizedIdentityText(saved.consumerName)!==normalizedIdentityText(r.consumerName) || normalizedIdentityText(saved.mobile)!==normalizedIdentityText(r.mobile) || normalizedIdentityText(saved.area)!==normalizedIdentityText(r.area)) mismatched.push(key);
+  });
+  if(missing.length||mismatched.length) throw new Error('Master cloud read-back mismatch: '+missing.length+' missing and '+mismatched.length+' mismatched consumer(s).');
+  return expectedRows.length;
+}
 
 // ================================================================
 // DATABASE LAYER — authenticated lpg-api with localStorage fallback
@@ -2770,99 +2810,136 @@ const DB = {
     try {
       assertNewProjectUrl(url);
       if (!isAllowedClientKey(key)) return false;
-      const client = createApiClient(() => (typeof AUTH !== 'undefined' && AUTH.token) || '');
-      const { error } = await client.table('lpg_remarks').select('consumer_no').limit(1);
-      return !error;
+      if (typeof AUTH !== 'undefined' && AUTH.token) {
+        const client = createApiClient(() => AUTH.token || '');
+        const { error } = await client.table('lpg_masters').select('consumer_no').limit(1);
+        return !error;
+      }
+      // Before login, test only the public Edge Function endpoint. Protected
+      // table access cannot be verified until a user supplies a valid PIN.
+      const response = await fetch(NEW_PROJECT_API, { method:'OPTIONS' });
+      return response.ok;
     } catch(e) { return false; }
   },
 
   // Initialize all tables via SQL (called once from Settings tab)
   async initTables() {
     if (!this._client) return { ok:false, error:'API not configured' };
+    if (!AUTH?.token || !['admin','staff'].includes(AUTH.role)) return { ok:false, error:'An authenticated admin or staff session is required for schema verification.' };
     try {
-      const { error } = await this._client.table('lpg_remarks').select('consumer_no').limit(1);
-      if (error) throw new Error(error.message);
+      const checks = await Promise.all([
+        this._client.table('lpg_masters').select('consumer_no').limit(1),
+        this._client.table('lpg_delivered').select('order_no').limit(1),
+        this._client.table('lpg_pending').select('id').limit(1),
+        this._client.table('lpg_remarks').select('consumer_no').limit(1),
+        gpsApi('list')
+      ]);
+      const failure = checks.find(x => x && x.error);
+      if (failure) throw new Error(failure.error.message);
       this._online=true; this._updateIndicator('online');
-      return { ok:true, message:'Existing database schema verified through lpg-api. Schema changes must be applied in Supabase SQL Editor.' };
+      return { ok:true, message:'Existing tables are reachable. No schema changes were made.' };
     } catch(e) { this._online=false; this._updateIndicator('error'); return {ok:false,error:e.message}; }
   },
 
   // ---- UPSERT helpers ----
 
-  // Save masters through lpg-api (upsert by consumer_no) + localStorage
+  // Save masters through the authenticated API. Local state is updated only by a
+  // subsequent successful syncAll(), never optimistically before server confirmation.
   async saveMasters(rows) {
-    try { localStorage.setItem('lpg_masters', JSON.stringify(rows)); } catch(e) { console.warn('localStorage quota: lpg_masters skipped'); }
     if (!this._client || !this._online) throw new Error('NEW project API is not connected. Masters were not uploaded to Supabase.');
+    if (!Array.isArray(rows) || !rows.length) throw new Error('No consumer master rows to upload.');
     this._updateIndicator('syncing');
+    let uploaded = 0;
     try {
       const mapped = rows.map(r => ({
-        consumer_no: r.consumerNo, consumer_name: r.consumerName, status: r.status,
-        mobile: r.mobile, nature: r.nature, ekyc: r.ekyc, ekyc_date: r.ekycDate,
-        hose_validity: r.hoseValidity, mi_date: r.miDate, area: r.area,
-        address: r.address, last_refill: r.lastRefill, last_refill_src: r.lastRefillSource,
-        consumer_type: r.consumerType, safety_status: r.safetyStatus,
-        sub_nature: r.subNature, masked_aadhar: r.maskedAadhar,
+        consumer_no: String(r.consumerNo || '').trim(), consumer_name: r.consumerName || null, status: r.status || null,
+        mobile: r.mobile || null, nature: r.nature || null, ekyc: r.ekyc || null, ekyc_date: r.ekycDate || null,
+        hose_validity: r.hoseValidity || null, mi_date: r.miDate || null, area: r.area || null,
+        address: r.address || null, last_refill: r.lastRefill || null, last_refill_src: r.lastRefillSource || null,
+        consumer_type: r.consumerType || null, safety_status: r.safetyStatus || null,
+        sub_nature: r.subNature || null, masked_aadhar: r.maskedAadhar || null,
         updated_at: new Date().toISOString()
       }));
-      // Upsert in chunks of 500
+      const blanks = mapped.findIndex(r => !r.consumer_no);
+      if (blanks >= 0) throw new Error('Consumer master row ' + (blanks + 1) + ' has no consumer number.');
+      const seen = new Set();
+      for (const row of mapped) {
+        if (seen.has(row.consumer_no)) throw new Error('Duplicate consumer number in this file: ' + row.consumer_no);
+        seen.add(row.consumer_no);
+      }
       for (let i = 0; i < mapped.length; i += 500) {
-        const { error } = await this._client.table('lpg_masters').upsert(mapped.slice(i, i+500), { onConflict: 'consumer_no' });
-        if (error) throw error;
+        const batch = mapped.slice(i, i + 500);
+        const { error } = await this._client.table('lpg_masters').upsert(batch, { onConflict: 'consumer_no' });
+        if (error) throw new Error('Masters upload stopped after ' + uploaded + ' rows: ' + error.message + '. Some earlier batches may already be saved; re-uploading the complete file is safe because this operation upserts by consumer number.');
+        uploaded += batch.length;
       }
       this._updateIndicator('online');
-      return { ok:true, uploaded:mapped.length };
+      return { ok:true, uploaded };
     } catch(e) { console.error('saveMasters error:', e); this._updateIndicator('error'); throw e; }
   },
 
-  // Save delivered rows through authenticated lpg-api; report success only after Supabase confirms every batch.
+  // Save delivered rows through the dedicated insert-only import action.
+  // v29 returns {data: <SQL RPC result>} without a guaranteed stats schema;
+  // authoritative verification is performed by the caller after syncAll().
   async saveDelivered(rows, fyKey) {
     if (!this._client || !this._online) throw new Error('NEW project API is not connected. Delivered data was not uploaded.');
     if (!Array.isArray(rows) || rows.length === 0) throw new Error('No delivered rows to upload.');
     this._updateIndicator('syncing');
+    let accepted = 0;
     try {
       const dbFyKey = normalizeFyKeyForDatabase(fyKey);
       const mapped = rows.map(r => ({
-        cash_memo: r.cashMemo, order_no: r.orderNo, consumer_no: r.consumerNo,
-        consumer_name: r.consumerName, nature: r.nature, package: r.package,
-        delivery_date: (() => { const d = parseDate(r.deliveryDate); if (!d) throw new Error('Invalid delivery date for Order No ' + r.orderNo + ': ' + r.deliveryDate); return String(d.getFullYear()).padStart(4,'0') + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); })(), delivery_man: r.deliveryMan, mobile: r.mobile,
-        address: r.address, rsp: r.rsp, area: r.area, ekyc: r.ekyc,
-        order_source: r.orderSource, ivrs_no: r.ivrsNo, dac_type: r.dacType||'', qty: r.qty, fy_key: dbFyKey
+        cash_memo: String(r.cashMemo || '').trim(), order_no: String(r.orderNo || '').trim(), consumer_no: String(r.consumerNo || '').trim(),
+        consumer_name: r.consumerName || null, nature: r.nature || null, package: r.package || null,
+        delivery_date: (() => { const d = parseDate(r.deliveryDate); if (!d) throw new Error('Invalid delivery date for Order No ' + r.orderNo + ': ' + r.deliveryDate); return String(d.getFullYear()).padStart(4,'0') + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); })(),
+        delivery_man: r.deliveryMan || null, mobile: r.mobile || null, address: r.address || null,
+        rsp: r.rsp ?? null, area: r.area || null, ekyc: r.ekyc || null,
+        order_source: r.orderSource || null, ivrs_no: r.ivrsNo || null, dac_type: r.dacType || '', qty: Number(r.qty), fy_key: dbFyKey
       }));
-      let inserted = 0, duplicatesSkipped = 0;
-      for (let i = 0; i < mapped.length; i += 500) {
-        // Insert-only RPC: exact re-imports are skipped; existing delivery rows are never updated.
-        // A reused Order Number with different identifiers is rejected by the database unique index.
-        const result = await newProjectApiPost({ action:'import_delivered', rows:mapped.slice(i, i+500) }, (typeof AUTH!=='undefined'&&AUTH.token)||'');
-        const stats = result && result.data;
-        if (!stats || stats.success !== true || Number(stats.rows_received) !== mapped.slice(i, i+500).length) {
-          throw new Error('Delivered import did not return a verified batch result at row ' + (i+1));
+      const seen = new Set();
+      for (const row of mapped) {
+        if (!row.order_no || !row.cash_memo || !row.consumer_no || !Number.isInteger(row.qty) || row.qty < 1) {
+          throw new Error('Delivered row contains a missing identifier or invalid quantity. Nothing in this batch was sent.');
         }
-        inserted += Number(stats.rows_inserted || 0);
-        duplicatesSkipped += Number(stats.duplicates_skipped || 0);
+        if (seen.has(row.order_no)) throw new Error('Duplicate Order No in this upload: ' + row.order_no);
+        seen.add(row.order_no);
+      }
+      for (let i = 0; i < mapped.length; i += 500) {
+        const batch = mapped.slice(i, i + 500);
+        await newProjectApiPost({ action:'import_delivered', rows:batch }, (typeof AUTH !== 'undefined' && AUTH.token) || '');
+        accepted += batch.length;
       }
       this._updateIndicator('online');
-      return { ok:true, uploaded:mapped.length, inserted, duplicatesSkipped, fy_key:dbFyKey };
-    } catch(e) { console.error('saveDelivered error:', e); this._updateIndicator('error'); throw e; }
+      return { ok:true, uploaded:accepted, apiAccepted:true, fy_key:dbFyKey };
+    } catch(e) { console.error('saveDelivered error after API accepted ' + accepted + ' rows:', e); this._updateIndicator('error'); throw e; }
   },
 
-  // Save pending through the dedicated atomic API import action
+  // Replace the pending snapshot through the dedicated admin-only API action.
+  // Do not update localStorage optimistically; syncAll() stages and commits the
+  // authoritative server snapshot after this request succeeds.
   async savePending(rows) {
-    try { localStorage.setItem('lpg_pending', JSON.stringify(rows)); } catch(e) { console.warn('Pending too large for localStorage — using API only'); }
     if (!this._client || !this._online) throw new Error('NEW project API is not connected. Pending bookings were not uploaded to Supabase.');
+    if (!Array.isArray(rows)) throw new Error('Pending data is not a valid row list.');
     this._updateIndicator('syncing');
     try {
       const currentRows = rows.filter(r => !r._removedFromUpload);
-      if (!currentRows.length) throw new Error('No active pending rows remain after reconciliation. Existing Supabase pending data was preserved; confirm an intentionally empty HPCL file before clearing it.');
+      if (!currentRows.length) throw new Error('No active pending rows remain. Existing Supabase pending data was preserved; confirm an intentionally empty HPCL file before clearing it.');
+      if (currentRows.length > 10000) throw new Error('Pending import exceeds the 10,000-row API limit.');
       const mapped = currentRows.map(r => ({
-        consumer_no:r.consumerNo, consumer_name:r.consumerName, order_no:r.orderNo,
-        order_status:r.orderStatus, order_date:r.orderDate, area:r.area,
-        delivery_man:r.deliveryMan, mobile:r.mobile, address:r.address,
-        ekyc:r.ekyc, ivrs_no:r.ivrsNo, qty:r.qty, nature:r.nature
+        consumer_no:String(r.consumerNo||'').trim(), consumer_name:r.consumerName||null, order_no:String(r.orderNo||'').trim(),
+        order_status:r.orderStatus||null, order_date:r.orderDate||null, area:r.area||null,
+        delivery_man:r.deliveryMan||null, mobile:r.mobile||null, address:r.address||null,
+        ekyc:r.ekyc||null, ivrs_no:r.ivrsNo||null, qty:Number(r.qty)||1, nature:r.nature||null
       }));
-      const result=await newProjectApiPost({action:'import_pending',rows:mapped}, (typeof AUTH!=='undefined'&&AUTH.token)||'');
-      if (!result || result.error || !result.data) throw new Error(result?.error||'Pending replacement did not return a verified result');
+      const seen = new Set();
+      for (const row of mapped) {
+        if (!row.consumer_no || !row.order_no) throw new Error('Pending row is missing Consumer No or Order No.');
+        if (seen.has(row.order_no)) throw new Error('Duplicate pending Order No in this upload: ' + row.order_no);
+        seen.add(row.order_no);
+      }
+      const result = await newProjectApiPost({action:'import_pending',rows:mapped}, (typeof AUTH!=='undefined' && AUTH.token)||'');
       this._updateIndicator('online');
-      return { ok:true, result:result.data, uploaded:mapped.length };
+      return { ok:true, result:result?.data ?? null, uploaded:mapped.length };
     } catch(e) { console.error('savePending error:',e); this._updateIndicator('error'); throw e; }
   },
 
@@ -2883,42 +2960,44 @@ const DB = {
     } catch(e) { console.error('saveRemark error:', e); this._updateIndicator('error'); throw e; }
   },
 
-  // Pull all data from Supabase into STATE + localStorage
-  // Fetch every row with deterministic ordering and an exact-count guard.
-  // Offset pagination without ORDER BY can overlap/skip rows between pages.
+  // Pull all data from Supabase with deterministic keyset pagination.
+  // Avoids the API's admin-only exact-count operation and avoids offset drift
+  // when rows are inserted while a multi-page read is in progress.
   async fetchAll(table, orderBy, uniqueKey) {
     const PAGE = 1000;
-    const countResult = await this._client.table(table).select(orderBy, { count: 'exact', head: true });
-    if (countResult.error) throw new Error(table + ' count failed: ' + countResult.error.message);
-    const expected = Number(countResult.count);
-    if (!Number.isSafeInteger(expected) || expected < 0) {
-      throw new Error(table + ' returned an invalid exact row count.');
-    }
-
+    const MAX_ROWS = 500000;
+    if (!uniqueKey || !orderBy || uniqueKey !== orderBy) throw new Error(table + ' must use the same stable unique key for sorting and keyset pagination.');
     const all = [];
-    for (let from = 0; from < expected; from += PAGE) {
-      const to = Math.min(from + PAGE - 1, expected - 1);
-      const result = await this._client.table(table).select('*').order(orderBy, { ascending: true }).range(from, to);
-      if (result.error) throw new Error(table + ' page at offset ' + from + ' failed: ' + result.error.message);
-      const page = Array.isArray(result.data) ? result.data : [];
-      if (page.length !== to - from + 1) {
-        throw new Error(table + ' pagination incomplete: expected ' + (to - from + 1) +
-          ' rows at offset ' + from + ', received ' + page.length + '. No local data was replaced.');
-      }
-      all.push(...page);
-    }
+    const seen = new Set();
+    let cursor = null;
 
-    if (all.length !== expected) {
-      throw new Error(table + ' row-count mismatch: expected ' + expected + ', received ' + all.length + '.');
-    }
-    if (uniqueKey) {
-      const seen = new Set();
-      for (const row of all) {
-        const value = String(row[uniqueKey] ?? '').trim();
-        if (!value) throw new Error(table + ' contains a blank ' + uniqueKey + '. Sync stopped safely.');
-        if (seen.has(value)) throw new Error(table + ' pagination returned duplicate ' + uniqueKey + ' ' + value + '. Sync stopped safely.');
-        seen.add(value);
+    while (true) {
+      let query = this._client.table(table).select('*').order(orderBy, { ascending: true }).limit(PAGE);
+      if (cursor !== null) query = query.gt(uniqueKey, cursor);
+      const result = await query;
+      if (result.error) throw new Error(table + ' page read failed: ' + result.error.message);
+      const page = Array.isArray(result.data) ? result.data : [];
+      if (!page.length) break;
+
+      for (const row of page) {
+        const value = row && row[uniqueKey];
+        if (value === null || typeof value === 'undefined' || String(value).trim() === '') {
+          throw new Error(table + ' contains a blank ' + uniqueKey + '. Sync stopped safely.');
+        }
+        const key = String(value);
+        if (seen.has(key)) throw new Error(table + ' returned duplicate pagination key ' + key + '. Sync stopped safely.');
+        seen.add(key);
       }
+
+      const nextCursor = page[page.length - 1][uniqueKey];
+      if (cursor !== null) {
+        const bothNumbers = typeof nextCursor === 'number' && typeof cursor === 'number';
+        const advanced = bothNumbers ? nextCursor > cursor : String(nextCursor) > String(cursor);
+        if (!advanced) throw new Error(table + ' pagination did not advance. Sync stopped safely.');
+      }
+      all.push(...page);      if (all.length > MAX_ROWS) throw new Error(table + ' exceeds the safety limit of ' + MAX_ROWS.toLocaleString() + ' rows.');
+      cursor = nextCursor;
+      if (page.length < PAGE) break;
     }
     return all;
   },
@@ -2939,8 +3018,8 @@ const DB = {
       // overwrite the working dashboard until every fetch has succeeded.
       const [mastersRaw, deliveredRaw, pendingRaw, remarksRaw] = await Promise.all([
         this.fetchAll('lpg_masters', 'consumer_no', 'consumer_no'),
-        this.fetchAll('lpg_delivered', 'id', 'order_no'),
-        this.fetchAll('lpg_pending', 'id', null),
+        this.fetchAll('lpg_delivered', 'order_no', 'order_no'),
+        this.fetchAll('lpg_pending', 'id', 'id'),
         this.fetchAll('lpg_remarks', 'consumer_no', 'consumer_no')
       ]);
 
@@ -2995,7 +3074,8 @@ const DB = {
       invalidateCache(); rebuildDashboard();
       populateRefillMonthDropdown(); populatePackageDropdown();
       const syncedAt = new Date();
-      const stamp = syncedAt.toLocaleString();      localStorage.setItem('lpg_cloudSyncTime', syncedAt.toISOString());
+      const stamp = syncedAt.toLocaleString();
+      localStorage.setItem('lpg_cloudSyncTime', syncedAt.toISOString());
       setText('lastSync', '✓ Cloud synced ' + stamp);
       if (showFeedback) {
         const orderCount = deliveredRaw.length;
@@ -3507,6 +3587,13 @@ function applyDeliveryRoleRestrictions(){
     document.body.classList.remove('delivery-restricted');
     document.querySelectorAll('.tab-panel').forEach(p=>p.style.display='');
     document.querySelectorAll('.sidebar-item').forEach(i=>i.style.display='');
+    if (AUTH.role !== 'admin') {
+      ['tab-upload','tab-delivery-report'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});
+      document.querySelectorAll('.sidebar-item').forEach(item=>{
+        const oc=item.getAttribute('onclick')||'';
+        if (oc.includes("'upload'") || oc.includes("'delivery-report'") || item.dataset.tabName==='delivery-report') item.style.display='none';
+      });
+    }
     return;
   }
   document.body.classList.add('delivery-restricted');
@@ -3550,12 +3637,16 @@ function showTab(name) {
     applyDeliveryRoleRestrictions();
     name='pending';
   }
+  if(AUTH.role!=='admin'&&['upload','delivery-report'].includes(name)){
+    showToastMain('Admin permission is required for this section.');
+    name='dashboard';
+  }
 
   _currentTab=name;
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
   document.querySelectorAll('.sidebar-item').forEach(item=>{
-    item.classList.toggle('active',!!(item.getAttribute('onclick')&&item.getAttribute('onclick').includes("'"+name+"'")));
+    item.classList.toggle('active',!!((item.getAttribute('onclick')&&item.getAttribute('onclick').includes("'"+name+"'")) || item.dataset.tabName===name));
   });
   if(!tabBuilt[name]){
     tabBuilt[name]=true;
@@ -3752,33 +3843,18 @@ Please upload it in the Masters section, not here.`;
               // Compare against the full cross-FY ledger; exact re-uploads are skipped,
               // but reused Order Numbers with changed identity are rejected before any write.
               const {newRows} = reconcileIncomingDeliveredRows(normalized);
-              const mergedDelivered = STATE.deliveredFY[uploadFY].concat(newRows)
-                .sort((a,b)=>a.deliveryDate>b.deliveryDate?1:-1);
-              const uploadResult = normalized.length ? await DB.saveDelivered(normalized, uploadFY) : {ok:true,inserted:0,duplicatesSkipped:0,fy_key:normalizeFyKeyForDatabase(uploadFY)};
-              STATE.deliveredFY[uploadFY] = mergedDelivered;
-              STATE.delivered = STATE.deliveredFY[STATE.currentFYKey] || [];
-              invalidateCache(); rebuildDashboard();
-              // Reconcile local cache against the authoritative server after the insert-only import.
-              const _postImportSync = await DB.syncAll(false);
+              const preExistingCount = normalized.length - newRows.length;
+              const uploadResult = normalized.length ? await DB.saveDelivered(normalized, uploadFY) : {ok:true,uploaded:0,fy_key:normalizeFyKeyForDatabase(uploadFY)};
+              if (!uploadResult || uploadResult.ok !== true) throw new Error('Delivered import API did not acknowledge the upload.');
+              // Do not report success or mutate the visible state until a fresh server read-back passes.
+              const postImportSync = await DB.syncAll(false);
+              if (!postImportSync) throw new Error('The API accepted the delivered upload, but cloud read-back failed. Refresh and verify cloud records before proceeding.');
+              const verifiedCount = verifyDeliveredImportRows(normalized);
               localStorage.setItem('lpg_lastUpload',new Date().toLocaleDateString('en-IN'));
-              // Post-upload date validation — catch any impossible dates
-              const impossibleDates = newRows.filter(r => {
-                const d = parseDate(r.deliveryDate);
-                if (!d) return true;
-                // Check date falls within selected range
-                if (_rangeFrom && _rangeTo) {
-                  if (d < _rangeFrom || d > _rangeTo) return true;
-                }
-                return false;
-              });
-              const warnNote = impossibleDates.length > 0
-                ? ` ⚠️ ${impossibleDates.length} dates outside selected range — check From/To dates!`
-                : '';
-              statusEl.className = (impossibleDates.length > 0 || !_postImportSync) ? 'upload-status error' : 'upload-status success';
-              const dupCount = normalized.length - newRows.length;
-              const dupNote = dupCount > 0 ? ` · ${dupCount} duplicates skipped` : '';
-              const _totalQty = STATE.deliveredFY[uploadFY].reduce((s,r)=>s+(r.qty||0),0);
-              statusEl.textContent=`${impossibleDates.length>0 || !_postImportSync?'⚠️':'✅'} Supabase confirmed ${uploadResult.inserted} inserted · ${uploadResult.duplicatesSkipped} already existed (preserved) · ${STATE.deliveredFY[uploadFY].length} FY orders · ${_totalQty} FY cylinders${dupNote}${warnNote}${_postImportSync?'':' · Cloud re-sync failed; refresh and verify before another upload'}`;
+              const totalQty = STATE.deliveredFY[uploadFY].reduce((sum,r)=>sum+(Number(r.qty)||0),0);
+              const duplicateNote = preExistingCount > 0 ? ` · ${preExistingCount} already present before upload` : '';
+              statusEl.className = 'upload-status success';
+              statusEl.textContent = `✅ ${verifiedCount} uploaded Order No(s) found and identity-checked in Supabase · ${STATE.deliveredFY[uploadFY].length} FY orders · ${totalQty} FY cylinders${duplicateNote}`;
             }else if(type==='pending'){
               // Get pending date range for order date fix
               const pfEl = document.getElementById('pendingDateFrom');
@@ -3790,39 +3866,37 @@ Please upload it in the Masters section, not here.`;
               const incoming = raw.map(r => normalizePendingWithRange(r, _pRangeFrom, _pRangeTo));
               const todayStr = new Date().toLocaleDateString('en-IN');
               const savedDate = localStorage.getItem('lpg_pending_date');
+              let candidatePending;
+              let addedCount = 0;
+              let absentFromLatest = 0;
               if (savedDate === todayStr && STATE.pending.length > 0) {
-                // Same day — merge with existing
-                // 1. Add new orders not already present
-                const existingKeys = new Set(STATE.pending.map(r => String(r.orderNo)));
-                const added = incoming.filter(r => !existingKeys.has(String(r.orderNo)));
-                STATE.pending.push(...added);
-                // 2. Update delivered/pending status based on latest upload
+                const previousByOrder = new Map(STATE.pending.map(r => [String(r.orderNo), r]));
                 const incomingKeys = new Set(incoming.map(r => String(r.orderNo)));
-                STATE.pending.forEach(r => {
-                  r._removedFromUpload = !incomingKeys.has(String(r.orderNo));
-                });
-                const stillPending = STATE.pending.filter(r => !r._removedFromUpload).length;
-                const deliveredCount = STATE.pending.filter(r => r._removedFromUpload).length;
-                const addedNote = added.length ? ` · +${added.length} new` : '';
-                const doneNote = deliveredCount ? ` · ${deliveredCount} delivered` : '';
-                statusEl.textContent = `✅ ${stillPending} pending${addedNote}${doneNote}`;
+                addedCount = incoming.filter(r => !previousByOrder.has(String(r.orderNo))).length;
+                absentFromLatest = STATE.pending.filter(r => !incomingKeys.has(String(r.orderNo))).length;
+                // Latest HPCL file is authoritative; refresh all fields for orders still present.
+                candidatePending = incoming.map(r => ({ ...(previousByOrder.get(String(r.orderNo)) || {}), ...r, _removedFromUpload:false }));
               } else {
-                // New day or first upload — start fresh
-                STATE.pending = incoming;
-                statusEl.textContent = `✅ Loaded ${STATE.pending.length} pending deliveries`;
+                candidatePending = incoming.map(r => ({...r, _removedFromUpload:false}));
               }
+              const pendingUpload = await DB.savePending(candidatePending);
+              if (!pendingUpload || pendingUpload.ok !== true) throw new Error('Pending upload was not acknowledged by Supabase.');
+              const pendingSync = await DB.syncAll(false);
+              if (!pendingSync) throw new Error('The API accepted the pending file, but cloud read-back failed. The previous Dashboard state was retained.');
+              const verifiedPending = verifyPendingImportRows(candidatePending);
               localStorage.setItem('lpg_pending_date', todayStr);
-              const pendingUpload = await DB.savePending(STATE.pending);
-              if (!pendingUpload || pendingUpload.ok !== true) throw new Error('Pending upload was not confirmed by Supabase');
-              try { localStorage.setItem('lpg_pending', JSON.stringify(STATE.pending)); } catch(e) { console.warn('Pending too large for localStorage'); }
               localStorage.setItem('lpg_pendingTime', new Date().toLocaleString('en-IN'));
               statusEl.className='upload-status success';
+              statusEl.textContent = `✅ ${verifiedPending} pending bookings verified in Supabase${addedCount ? ` · ${addedCount} new` : ''}${absentFromLatest ? ` · ${absentFromLatest} absent from latest upload (check HPCL status; not counted as delivered)` : ''}`;
             }else{
-              STATE.masters=raw.map(normalizeMasters);
-              const masterUpload = await DB.saveMasters(STATE.masters);
-              if (!masterUpload || masterUpload.ok !== true) throw new Error('Master upload was not confirmed by Supabase');
+              const candidateMasters = raw.map(normalizeMasters);
+              const masterUpload = await DB.saveMasters(candidateMasters);
+              if (!masterUpload || masterUpload.ok !== true) throw new Error('Master upload was not acknowledged by Supabase');
+              const masterSync = await DB.syncAll(false);
+              if (!masterSync) throw new Error('The API accepted the master upload, but cloud read-back failed. The previous Dashboard state was retained.');
+              const verifiedMasters = verifyMasterImportRows(candidateMasters);
               statusEl.className='upload-status success';
-              statusEl.textContent=`✅ Supabase confirmed ${masterUpload.uploaded} consumer master records`;
+              statusEl.textContent=`✅ ${verifiedMasters} consumer master records verified in Supabase after re-sync`;
             }
             invalidateCache(); rebuildDashboard();
           }catch(err){
@@ -3920,8 +3994,7 @@ function normalizePendingWithRange(r, rangeFrom, rangeTo){
     address:      r['ConsumerAddress']||'',
     ekyc:         normaliseEkyc(r['EkycStatus']||''),
     ivrsNo:       String(r['IVRS BookingNumber']||r['IVRSBookingNumber']||r['IVRS Booking Number']||r['IVRSBookingNo']||''),
-    qty:          Math.max(1,parseInt(r['OrderQuantity']||1)||1),
-    nature:       '', _cylFY:0,
+    qty:          Math.max(1,parseInt(r['OrderQuantity']||1)||1),    nature:       '', _cylFY:0,
   };
 }
 
@@ -3994,7 +4067,8 @@ function formatDateWithRange(v, rangeFrom, rangeTo) {
   // Excel serial number (from cellDates:false) — 100% unambiguous
   if (typeof v === 'number' && v > 1000) {
     const dt = excelSerialToDate(v);
-    if (!dt) return '';    return fmt(dt.d, dt.m, dt.y);
+    if (!dt) return '';
+    return fmt(dt.d, dt.m, dt.y);
   }
 
   // Date object fallback (should not happen with cellDates:false but safety net)
@@ -4687,7 +4761,7 @@ function dashRow(r,today,pendSet){
   const ivrsClean=(r.ivrsNo||'').replace(/\D/g,''), mobClean=(r.mobile||'').replace(/\D/g,'');
   const ivrsDisplay=ivrsClean&&ivrsClean!==mobClean?`<span title="Booked from different number" style="color:var(--yellow);font-size:10px;font-family:var(--mono)">📞${r.ivrsNo}</span>`:'';
   return `<tr style="${hasPendingOrder ? 'background:rgba(234,88,12,0.06);border-left:3px solid var(--orange)' : ''}">
-    <td><a class="consumer-link" href="LPG_Dashboard.html#consumer=${escAttr(r.consumerNo)}" onclick="showHistory('${escAttr(r.consumerNo)}');return false;">${r.consumerNo}</a></td>
+    <td><a class="consumer-link" href="#" onclick="event.preventDefault();showHistory(this.dataset.historyConsumer)" data-history-consumer="${escAttr(r.consumerNo)}">${r.consumerNo}</a></td>
     <td title="${escAttr(r.consumerName)}">${r.consumerName||'—'}${r.status==='Transferred'?'<span style="font-size:9px;background:#f59e0b22;color:#d97706;border:1px solid #f59e0b55;border-radius:4px;padding:1px 4px;margin-left:4px;vertical-align:middle">⇄ Trans.</span>':''}${r._portabilityOut?`<span title="Our consumer buying from another agency" style="font-size:9px;background:rgba(239,68,68,.12);color:#dc2626;border:1px solid rgba(239,68,68,.35);border-radius:4px;padding:1px 5px;margin-left:4px;vertical-align:middle;font-weight:700;">↗ Port.Out</span>`:''}${r._portabilityIn?`<span title="Other agency consumer buying from us" style="font-size:9px;background:rgba(34,197,94,.12);color:#16a34a;border:1px solid rgba(34,197,94,.35);border-radius:4px;padding:1px 5px;margin-left:4px;vertical-align:middle;font-weight:700;">↙ Port.In</span>`:''}${hasPendingOrder?`<span title="Pending: ${escAttr(pendingOrder?.orderStatus||'Pending')} · ${escAttr(pendingOrder?.deliveryMan||'')}" style="font-size:9px;background:rgba(234,88,12,.15);color:var(--orange);border:1px solid rgba(234,88,12,.4);border-radius:4px;padding:1px 5px;margin-left:4px;vertical-align:middle;font-weight:700;">🔔 Pending</span>`:''}</td>
     <td style="font-family:var(--mono);font-size:11px">${r.mobile||'—'}</td>
     <td style="font-family:var(--mono);font-size:11px;color:${ivrsClean&&ivrsClean!==mobClean?'var(--yellow)':'var(--text2)'}">${ivrsClean&&ivrsClean!==mobClean?r.ivrsNo:'—'}</td>
@@ -4766,7 +4840,7 @@ function pendRow(r){
     ? `<span class="badge badge-green" title="Delivered — not in latest upload">✅ Delivered</span>`
     : `<span class="badge badge-orange">${r.orderStatus||'Pending'}</span>`;
   return `<tr class="pending-row" style="${rowStyle}">
-    <td><a class="consumer-link" href="LPG_Dashboard.html#consumer=${escAttr(r.consumerNo)}" onclick="showHistory('${escAttr(r.consumerNo)}');return false;">${r.consumerNo}</a></td>
+    <td><a class="consumer-link" href="#" onclick="event.preventDefault();showHistory(this.dataset.historyConsumer)" data-history-consumer="${escAttr(r.consumerNo)}">${r.consumerNo}</a></td>
     <td title="${escAttr(r.consumerName)}">${r.consumerName}</td>
     <td style="font-family:var(--mono)">${r.mobile}</td>
     <td style="font-family:var(--mono);font-size:11px;color:var(--text2)">${r.ivrsNo||'—'}</td>
@@ -4872,7 +4946,7 @@ function fyRow(r){
   const done=isEkycDone(r.ekyc);
   return `<tr>
     <td style="font-family:var(--mono);font-size:11px">${r.deliveryDate}</td>
-    <td><a class="consumer-link" href="LPG_Dashboard.html#consumer=${escAttr(r.consumerNo)}" onclick="showHistory('${escAttr(r.consumerNo)}');return false;">${r.consumerNo}</a></td>
+    <td><a class="consumer-link" href="#" onclick="event.preventDefault();showHistory(this.dataset.historyConsumer)" data-history-consumer="${escAttr(r.consumerNo)}">${r.consumerNo}</a></td>
     <td>${r.consumerName}</td><td style="font-family:var(--mono);font-size:11px">${r.orderNo}</td>
     <td>${r.deliveryMan}</td><td>${r.area}</td>
     <td style="font-size:11px;color:var(--text2)">${(r.package||'').substring(0,35)}</td>
@@ -4917,10 +4991,9 @@ function ekycRow(r){
   const rm=STATE.remarks[r.consumerNo]||{};
   const cyl=r._cylFY||0,cylCls=cyl>=6?'high':cyl===0?'low':'';
   return `<tr>
-    <td><a class="consumer-link" href="LPG_Dashboard.html#consumer=${escAttr(r.consumerNo)}" onclick="showHistory('${escAttr(r.consumerNo)}');return false;">${r.consumerNo}</a></td>
+    <td><a class="consumer-link" href="#" onclick="event.preventDefault();showHistory(this.dataset.historyConsumer)" data-history-consumer="${escAttr(r.consumerNo)}">${r.consumerNo}</a></td>
     <td title="${escAttr(r.consumerName)}">${r.consumerName}</td>
-    <td style="font-family:var(--mono)">${r.mobile}</td>
-    <td style="font-family:var(--mono);font-size:11px;color:var(--text2)">${r.ivrsNo||'—'}</td>
+    <td style="font-family:var(--mono)">${r.mobile}</td>    <td style="font-family:var(--mono);font-size:11px;color:var(--text2)">${r.ivrsNo||'—'}</td>
     <td>${r.area}</td>
     <td><span class="badge ${natBadge(r.nature)}">${shortNat(r.nature)}</span></td>
     <td><span class="badge badge-red">PENDING</span></td>
@@ -4961,7 +5034,7 @@ function hoseRow(r,today){
   const d=parseDate(r.hoseValidity),days=d?Math.ceil((d-today)/86400000):null;
   const badge=days===null?'':days<0?`<span class="badge badge-red">${Math.abs(days)}d overdue</span>`:days<=30?`<span class="badge badge-red">${days}d left</span>`:`<span class="badge badge-yellow">${days}d left</span>`;
   return `<tr>
-    <td><a class="consumer-link" href="LPG_Dashboard.html#consumer=${escAttr(r.consumerNo)}" onclick="showHistory('${escAttr(r.consumerNo)}');return false;">${r.consumerNo}</a></td>
+    <td><a class="consumer-link" href="#" onclick="event.preventDefault();showHistory(this.dataset.historyConsumer)" data-history-consumer="${escAttr(r.consumerNo)}">${r.consumerNo}</a></td>
     <td>${r.consumerName}</td><td style="font-family:var(--mono)">${r.mobile}</td>
     <td>${r.area}</td><td style="font-family:var(--mono)">${r.hoseValidity}</td><td>${badge}</td>
     <td><div class="call-toggle">
@@ -4993,12 +5066,13 @@ function buildInactiveTable(){
   buildInactiveBreakdowns(_inactiveData); filterInactive();
 }
 function buildInactiveBreakdowns(data){
-  const bar=document.getElementById('inactiveSourceBar');if(!bar) return;  bar.style.display=data.length?'flex':'none';
+  const bar=document.getElementById('inactiveSourceBar');if(!bar) return;
+  bar.style.display=data.length?'flex':'none';
   const srcC={},natC={},areaC={};
   data.forEach(r=>{const s=classifySource(r.lastRefillSource)||'Never Ordered';srcC[s]=(srcC[s]||0)+1;const n=shortNat(r.nature)||'Unknown';natC[n]=(natC[n]||0)+1;if(r.area)areaC[r.area]=(areaC[r.area]||0)+1;});
-  const srcEl=document.getElementById('inactiveSourceBreakdown');if(srcEl)srcEl.innerHTML=Object.entries(srcC).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span class="badge ${srcBadge(k)}" style="font-size:11px">${k}: <strong>${v}</strong></span>`).join('');
-  const natEl=document.getElementById('inactiveNatureBreakdown');if(natEl)natEl.innerHTML=Object.entries(natC).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span class="badge badge-blue" style="font-size:11px">${k}: <strong>${v}</strong></span>`).join('');
-  const areaEl=document.getElementById('inactiveAreaBreakdown');if(areaEl)areaEl.innerHTML=Object.entries(areaC).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,v])=>`<span class="badge badge-gray" style="font-size:11px">${k}: <strong>${v}</strong></span>`).join('');
+  const srcEl=document.getElementById('inactiveSourceBreakdown');if(srcEl)srcEl.innerHTML=Object.entries(srcC).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span class="badge ${srcBadge(k)}" style="font-size:11px">${escHtml(k)}: <strong>${v}</strong></span>`).join('');
+  const natEl=document.getElementById('inactiveNatureBreakdown');if(natEl)natEl.innerHTML=Object.entries(natC).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span class="badge badge-blue" style="font-size:11px">${escHtml(k)}: <strong>${v}</strong></span>`).join('');
+  const areaEl=document.getElementById('inactiveAreaBreakdown');if(areaEl)areaEl.innerHTML=Object.entries(areaC).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,v])=>`<span class="badge badge-gray" style="font-size:11px">${escHtml(k)}: <strong>${v}</strong></span>`).join('');
 }
 function filterInactive(){debounce('inactive',_doFilterInactive,300);}
 function _doFilterInactive(){
@@ -5025,11 +5099,11 @@ function inactiveRow(r){
   const daysBadge=days===null?'<span class="badge badge-gray">Never ordered</span>':days>180?`<span class="badge badge-red">${days}d ago</span>`:`<span class="badge badge-yellow">${days}d ago</span>`;
   const src=classifySource(r.lastRefillSource);
   return `<tr>
-    <td><a class="consumer-link" href="LPG_Dashboard.html#consumer=${escAttr(r.consumerNo)}" onclick="showHistory('${escAttr(r.consumerNo)}');return false;">${r.consumerNo}</a></td>
-    <td title="${escAttr(r.consumerName)}">${r.consumerName||'—'}</td>
-    <td style="font-family:var(--mono)">${r.mobile||'—'}</td>
-    <td>${r.area||'—'}</td>
-    <td><span class="badge ${natBadge(r.nature)}">${shortNat(r.nature)}</span></td>
+    <td><a class="consumer-link" href="#" onclick="event.preventDefault();showHistory(this.dataset.historyConsumer)" data-history-consumer="${escAttr(r.consumerNo)}">${escHtml(r.consumerNo)}</a></td>
+    <td title="${escAttr(r.consumerName)}">${escHtml(r.consumerName||'—')}</td>
+    <td style="font-family:var(--mono)">${escHtml(r.mobile||'—')}</td>
+    <td>${escHtml(r.area||'—')}</td>
+    <td><span class="badge ${natBadge(r.nature)}">${escHtml(shortNat(r.nature))}</span></td>
     <td style="font-size:11px;color:var(--text2)">${r._lastDeliveryDate}</td>
     <td>${daysBadge}</td>
     <td><span class="badge ${srcBadge(src)}">${src||'—'}</span></td>
@@ -5325,7 +5399,7 @@ async function updateConsumerFollowup(id,status){
 
 function closeModal(){document.getElementById('historyModal').classList.remove('open');}
 document.getElementById('historyModal').addEventListener('click',function(e){if(e.target===this)closeModal();});
-function pRow(k,v){return v?`<div class="profile-row"><span class="profile-key">${k}</span><span class="profile-val" title="${escAttr(v||'')}">${v||'—'}</span></div>`:''; }
+function pRow(k,v){return v?`<div class="profile-row"><span class="profile-key">${escHtml(k)}</span><span class="profile-val" title="${escAttr(v||'')}">${escHtml(v||'—')}</span></div>`:''; }
 async function copyConsumerValue(cno,kind){
   const consumer=getMergedConsumers().find(x=>String(x.consumerNo)===String(cno));
   const value=kind==='address'?(consumer?.address||''):(String(cno||''));
@@ -5370,7 +5444,7 @@ function buildLocationSection(cno) {
         ${hasPending ? `<button onclick="quickApprove('${cno}')" class="btn btn-primary" style="font-size:11px;padding:6px 14px;">✅ Approve Now</button>` : ''}
         <button onclick="openProfileReapprove('${cno}')" class="btn" style="font-size:11px;padding:6px 14px;">🗺️ ${hasApproved?'Edit / Re-approve':'Review on Map'}</button>
         <button onclick="closeModal();openPinMap('${cno}')" class="btn" style="font-size:11px;padding:6px 14px;color:var(--blue);border-color:var(--blue)">📍 Pin on Map</button>
-        ${hasApproved ? `<button onclick="clearConsumerGPS('${cno}','${(lookupConsumerName(cno)||cno).replace(/'/g,"&#39;")}')" class="btn" style="font-size:11px;padding:6px 14px;color:var(--red);border-color:var(--red);">✕ Clear</button>` : ''}
+        ${hasApproved && AUTH?.role==='admin' ? `<button onclick="clearConsumerGPS('${escAttr(cno)}','${escAttr(lookupConsumerName(cno)||cno)}')" class="btn" style="font-size:11px;padding:6px 14px;color:var(--red);border-color:var(--red);">✕ Clear</button>` : ''}
       </div>
     </div>`;
 }
@@ -5794,7 +5868,7 @@ window.addEventListener('DOMContentLoaded', () => {
 // ── PIN AUTH ──
 async function hashPin(pin) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin + 'lpg_salt_2526'));
-  return Array.table(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 
 function goToPin() {
@@ -5919,7 +5993,6 @@ function selDM(n) {
   document.getElementById('dmNameInput').value = n;
   document.querySelectorAll('.dm-btn').forEach(b => b.classList.toggle('active', b.textContent.trim() === n));
 }
-
 function startDelivery() {
   const name = document.getElementById('dmNameInput').value.trim();
   if (!name) { toast('Enter your name · नाव टाका', '#ef4444'); return; }
@@ -5992,7 +6065,8 @@ function tspNearestNeighbor(depot, stops) {
     const stop = remaining.splice(nearest, 1)[0];
     route.push(stop);
     cur = stop;
-  }  return route;
+  }
+  return route;
 }
 
 // ================================================================
@@ -6312,7 +6386,7 @@ function startGPSWatch() {
 // ================================================================
 // UTILS
 // ================================================================
-function esc(s) { return String(s||'').replace(/'/g,"&#39;").replace(/"/g,'&quot;'); }
+function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 let _tt;
 function toast(msg, color) {
   const el = document.getElementById('toast');
@@ -6345,41 +6419,32 @@ function buildShareContent() {
     if (!byDM[dm]) byDM[dm] = [];
     byDM[dm].push(p);
   });
-
   const dms = Object.keys(byDM).sort();
   const today = new Date().toLocaleDateString('en-IN', {weekday:'long', day:'numeric', month:'short'});
-
   el.innerHTML = `
-    <div style="font-size:12px;color:var(--text2);margin-bottom:14px;">
-      📅 ${today} · ${STATE.pending.length} total orders · ${dms.length} delivery men
-    </div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:14px;">📅 ${escHtml(today)} · ${STATE.pending.length} total orders · ${dms.length} delivery men</div>
     ${dms.map(dm => {
       const orders = byDM[dm];
-      const totalCyl = orders.reduce((s,o) => s+(o.qty||1), 0);
+      const totalCyl = orders.reduce((sum,o) => sum+(o.qty||1), 0);
       const areas = [...new Set(orders.map(o=>o.area).filter(Boolean))];
       return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-          <div>
-            <div style="font-size:14px;font-weight:700">${dm}</div>
-            <div style="font-size:11px;color:var(--text2)">${orders.length} orders · ${totalCyl} cylinders</div>
-          </div>
-          <span style="font-size:10px;color:var(--text3)">${areas.slice(0,3).join(', ')}${areas.length>3?' +more':''}</span>
+          <div><div style="font-size:14px;font-weight:700">${escHtml(dm)}</div><div style="font-size:11px;color:var(--text2)">${orders.length} orders · ${totalCyl} cylinders</div></div>
+          <span style="font-size:10px;color:var(--text3)">${areas.slice(0,3).map(escHtml).join(', ')}${areas.length>3?' +more':''}</span>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button class="btn btn-primary" style="font-size:12px;padding:8px 14px;" onclick="generateDeliveryApp('${escAttr(dm)}')">
-            📱 Open App for ${dm}
-          </button>
-          <button class="btn" style="font-size:12px;padding:8px 14px;" onclick="copyWhatsAppText('${escAttr(dm)}')">
-            💬 Copy WhatsApp Text
-          </button>
+          <button class="btn btn-primary" data-share-action="open-app" data-dm="${escAttr(dm)}" style="font-size:12px;padding:8px 14px;">📱 Open App for ${escHtml(dm)}</button>
+          <button class="btn" data-share-action="copy-text" data-dm="${escAttr(dm)}" style="font-size:12px;padding:8px 14px;">💬 Copy WhatsApp Text</button>
         </div>
       </div>`;
     }).join('')}
     <div style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.6;">
-      💡 <strong style="color:var(--text2)">Open App</strong> — opens delivery app pre-loaded with that person's data. Save as HTML file and send on WhatsApp.<br>
+      💡 <strong style="color:var(--text2)">Open App</strong> — opens delivery app pre-loaded with that person's office-allocated data. Save as HTML file and send on WhatsApp.<br>
       💬 <strong style="color:var(--text2)">WhatsApp Text</strong> — copies a simple text list to paste in WhatsApp.<br><br>
-      📍 <strong style="color:var(--text2)">GPS sync:</strong> When delivery men tap ✅ Done, GPS is captured. Ask them to send their GPS export back to office: in the delivery app, long-press the header for GPS export. Then import it in Route Optimizer → Import JSON.
+      📍 <strong style="color:var(--text2)">GPS sync:</strong> Delivery GPS is submitted through the authenticated API. The on-phone Done mark is local progress only; it is not an official HPCL delivery confirmation.
     </div>`;
+  el.querySelectorAll('[data-share-action="open-app"]').forEach(btn => btn.addEventListener('click', () => generateDeliveryApp(btn.dataset.dm)));
+  el.querySelectorAll('[data-share-action="copy-text"]').forEach(btn => btn.addEventListener('click', () => copyWhatsAppText(btn.dataset.dm)));
 }
 
 function generateDeliveryApp(dmName) {
@@ -6412,17 +6477,19 @@ function generateDeliveryApp(dmName) {
   };
 
   // Inject delivery data + Supabase config + depot for route optimization
-  const sbUrl = localStorage.getItem('sb_url') || '';
+  const sbUrl = NEW_PROJECT_URL;
   const sbKey = localStorage.getItem('sb_key') || '';
+  if (!isAllowedClientKey(sbKey)) { alert('Configure the NEW project publishable/anon key before generating a delivery app.'); return; }
   let depot = null;
   try { const dp = localStorage.getItem('depot_pin'); if (dp) depot = JSON.parse(dp); } catch(e) {}
+  const safeScriptJson = value => JSON.stringify(value).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
   const dataScript = `\n<script>
-window.DELIVERY_DATA = ${JSON.stringify(data)};
-window.KNOWN_GPS = ${JSON.stringify(knownGPS)};
-window.SUPABASE_CONFIG = ${JSON.stringify({ url:sbUrl, key:sbKey })};
-window.SB_URL = ${JSON.stringify(sbUrl)};
-window.SB_ANON = ${JSON.stringify(sbKey)};
-window.DEPOT = ${JSON.stringify(depot)};
+window.DELIVERY_DATA = ${safeScriptJson(data)};
+window.KNOWN_GPS = ${safeScriptJson(knownGPS)};
+window.SUPABASE_CONFIG = ${safeScriptJson({ url:sbUrl, key:sbKey })};
+window.SB_URL = ${safeScriptJson(sbUrl)};
+window.SB_ANON = ${safeScriptJson(sbKey)};
+window.DEPOT = ${safeScriptJson(depot)};
 const NEW_PROJECT_API = 'https://uggqsvgxjhvdfkddqzyh.supabase.co/functions/v1/lpg-api';
 async function newProjectApiPost(body, token) {
   const key=window.SB_ANON||'';
@@ -6494,7 +6561,8 @@ function runDiagnostics() {
 
   // Check all localStorage keys related to delivered data
   const flat = localStorage.getItem('lpg_delivered');
-  const flatData = flat ? JSON.parse(flat) : [];
+  let flatData = [];
+  try { flatData = flat ? JSON.parse(flat) : []; if (!Array.isArray(flatData)) flatData = []; } catch (e) { lines.push('lpg_delivered (flat): cache JSON is invalid; cloud data was not changed'); }
   lines.push(`lpg_delivered (flat): ${flatData.length} records`);
   if (flatData.length > 0) {
     lines.push(`  First record date: ${flatData[0].deliveryDate}`);
@@ -6506,7 +6574,7 @@ function runDiagnostics() {
   lines.push('');
   ['2223','2324','2425','2526','2627','2728'].forEach(fy => {
     const v = localStorage.getItem('lpg_del_'+fy);
-    const d = v ? JSON.parse(v) : [];
+    let d = []; try { d = v ? JSON.parse(v) : []; if (!Array.isArray(d)) d = []; } catch (e) { lines.push(`lpg_del_${fy}: cache JSON is invalid`); return; }
     lines.push(`lpg_del_${fy}: ${d.length} records`);
   });
 
@@ -6576,7 +6644,7 @@ let _loginRole = ''; // role of selected user during login
 
 async function hashPin(pin) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin + 'lpg_salt_2526'));
-  return Array.table(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 
 // Load session from sessionStorage (clears on tab close)
@@ -6679,6 +6747,10 @@ function finishLogin() {
 }
 
 function doLogout() {
+  stopGPSAutoPoll();
+  // Clear the separate report-module session too; never leave an admin report token
+  // usable after the Dashboard account has logged out or another role signs in.
+  if (typeof drToken !== 'undefined') drToken = '';
   sessionStorage.removeItem(AUTH_KEY);
   AUTH = { loggedIn:false, role:'', name:'' };
   document.getElementById('loggedInBar').style.display = 'none';
@@ -6725,24 +6797,24 @@ function showAdminSetup() {
 }
 
 async function createAdminAccount() {
-  const name = document.getElementById('adminNameInput').value.trim();
+  const name = 'admin';
   const p1   = document.getElementById('adminPin1').value.trim();
   const p2   = document.getElementById('adminPin2').value.trim();
   const err  = document.getElementById('adminSetupErr');
 
-  if (!name)          { err.textContent = 'Enter a name'; return; }
+  if (!name)          { err.textContent = 'Admin username is not configured'; return; }
   if (!/^\d{4,8}$/.test(p1)){ err.textContent = 'PIN must be 4–8 digits'; return; }
   if (p1 !== p2)      { err.textContent = 'PINs do not match'; return; }
   const setupSecret = document.getElementById('adminSetupSecret').value.trim();
   if (!localStorage.getItem('sb_key')) { err.textContent = 'Connect the new Supabase project first'; return; }
-  if (setupSecret.length < 24) { err.textContent = 'Enter the bootstrap secret configured in the new project Edge Function'; return; }
+  if (setupSecret.length < 32) { err.textContent = 'ADMIN_RESET_SECRET must be at least 32 characters and must match the Supabase Edge Function secret'; return; }
 
-  err.textContent = 'Creating securely…';
+  err.textContent = 'Resetting existing admin PIN securely…';
   try {
     await newProjectApiPost({ action:'setup_admin', name, pin:p1, setupSecret });
     document.getElementById('adminSetupSecret').value = '';
     err.style.color = 'var(--green)';
-    err.textContent = '✅ Admin created! Please login.';
+    err.textContent = '✅ Existing admin PIN reset. Sign in with username admin.';
     setTimeout(() => {
       backToStep1();
       buildLoginGrid();
@@ -6797,6 +6869,7 @@ async function loadUserLists() {
     const delivery = data.filter(u => u.role === 'delivery');
     document.getElementById('staffList').innerHTML    = renderUserList(staff);
     document.getElementById('deliveryList').innerHTML = renderUserList(delivery);
+    bindUserListActions();
   } catch(e) { console.warn('loadUserLists error:', e); }
 }
 
@@ -6804,13 +6877,17 @@ function renderUserList(users) {
   if (!users.length) return '<div style="color:var(--text3);font-size:12px;padding:8px 0">None added yet.</div>';
   return users.map(u => `
     <div class="user-row">
-      <span class="user-role-badge ${u.role==='admin'?'role-admin':u.role==='staff'?'role-staff':'role-delivery'}">${u.role}</span>
-      <span style="flex:1;font-size:13px;font-weight:600">${u.name}</span>
+      <span class="user-role-badge ${u.role==='admin'?'role-admin':u.role==='staff'?'role-staff':'role-delivery'}">${escHtml(u.role)}</span>
+      <span style="flex:1;font-size:13px;font-weight:600">${escHtml(u.name)}</span>
       <span style="font-size:11px;color:${u.active?'var(--green)':'var(--red)'}">${u.active?'Active':'Disabled'}</span>
-      ${u.role !== 'admin' ? `<button onclick="resetUserPin('${escAttr(u.name)}','${u.role}')" style="padding:5px 10px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:11px;cursor:pointer">Reset PIN</button>` : ''}
-      ${u.role !== 'admin' ? `<button onclick="toggleUserActive('${escAttr(u.name)}','${u.role}',${!u.active})" style="padding:5px 10px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:11px;cursor:pointer">${u.active?'Disable':'Enable'}</button>` : ''}
+      ${u.role !== 'admin' ? `<button data-user-action="reset-pin" data-name="${escAttr(u.name)}" data-role="${escAttr(u.role)}" style="padding:5px 10px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:11px;cursor:pointer">Reset PIN</button>` : ''}
+      ${u.role !== 'admin' ? `<button data-user-action="toggle-active" data-name="${escAttr(u.name)}" data-role="${escAttr(u.role)}" data-active="${!u.active}" style="padding:5px 10px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:11px;cursor:pointer">${u.active?'Disable':'Enable'}</button>` : ''}
     </div>
   `).join('');
+}
+function bindUserListActions() {
+  document.querySelectorAll('[data-user-action="reset-pin"]').forEach(btn => btn.addEventListener('click', () => resetUserPin(btn.dataset.name, btn.dataset.role)));
+  document.querySelectorAll('[data-user-action="toggle-active"]').forEach(btn => btn.addEventListener('click', () => toggleUserActive(btn.dataset.name, btn.dataset.role, btn.dataset.active === 'true')));
 }
 
 async function resetUserPin(name, role) {
@@ -6852,11 +6929,12 @@ function closeReport() {
 function buildReportHTML() {
   const today     = new Date();
   const todayStr  = today.toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
-  const dateKey   = today.toLocaleDateString('en-IN');
+  const todayKey = dateKey(today);
 
-  // Delivered today = pending rows marked as _removedFromUpload
-  const deliveredToday = STATE.pending.filter(r => r._removedFromUpload);
-  const stillPending   = STATE.pending.filter(r => !r._removedFromUpload);
+  // Delivered today comes from the authoritative delivered history, not the
+  // temporary _removedFromUpload flag (which disappears after a cloud refresh).
+  const deliveredToday = getAllDeliveredRows().filter(r => dateKey(r.deliveryDate) === todayKey);
+  const stillPending   = (STATE.pending || []).filter(r => !r._removedFromUpload);
   const totalCyls      = deliveredToday.reduce((s,r) => s+(+r.qty||1), 0);
   const pendCyls       = stillPending.reduce((s,r) => s+(+r.qty||1), 0);
 
@@ -6871,10 +6949,10 @@ function buildReportHTML() {
   });
   // Also count still-pending per man
   const pendByMan = {};
-  STATE.pending.forEach(r => {
+  stillPending.forEach(r => {
     const m = r.deliveryMan || 'Unknown';
     if (!pendByMan[m]) pendByMan[m] = 0;
-    if (!r._removedFromUpload) pendByMan[m]++;
+    pendByMan[m]++;
   });
 
   // ── By Area ──
@@ -6904,18 +6982,17 @@ function buildReportHTML() {
     .sort((a,b) => b[1].done - a[1].done)
     .map(([name, d]) => `
       <tr>
-        <td>${name}</td>
+        <td>${escHtml(name)}</td>
         <td class="num"><span class="rpt-badge-done">${d.done}</span></td>
         <td class="num">${d.cyls}</td>
         <td class="num"><span class="rpt-badge-pending">${pendByMan[name]||0}</span></td>
-        <td style="font-size:11px;color:#6b7280">${[...d.areas].join(', ')}</td>
+        <td style="font-size:11px;color:#6b7280">${escHtml([...d.areas].join(', '))}</td>
       </tr>`).join('');
 
   const areaRows = Object.entries(byArea)
     .sort((a,b) => b[1].done - a[1].done)
-    .map(([area, d]) => `
-      <tr>
-        <td>${area}</td>
+    .map(([area, d]) => `      <tr>
+        <td>${escHtml(area)}</td>
         <td class="num"><span class="rpt-badge-done">${d.done}</span></td>
         <td class="num">${d.cyls}</td>
         <td class="num"><span class="rpt-badge-pending">${pendByArea[area]||0}</span></td>
@@ -6923,15 +7000,15 @@ function buildReportHTML() {
 
   const pendRows = pendSorted.map(r => `
     <tr>
-      <td style="font-size:11px">${r.consumerNo}</td>
-      <td>${r.consumerName}</td>
-      <td>${r.area||'—'}</td>
-      <td>${r.deliveryMan||'—'}</td>
-      <td style="font-size:11px;color:#6b7280">${r.mobile||'—'}</td>
-      <td style="font-size:11px;color:#6b7280">${(r.address||'').substring(0,40)}</td>
+      <td style="font-size:11px">${escHtml(r.consumerNo||'—')}</td>
+      <td>${escHtml(r.consumerName||'—')}</td>
+      <td>${escHtml(r.area||'—')}</td>
+      <td>${escHtml(r.deliveryMan||'—')}</td>
+      <td style="font-size:11px;color:#6b7280">${escHtml(r.mobile||'—')}</td>
+      <td style="font-size:11px;color:#6b7280">${escHtml((r.address||'').substring(0,40))}</td>
     </tr>`).join('');
 
-  const totalOrders = STATE.pending.length;
+  const totalOrders = deliveredToday.length + stillPending.length;
   const pct = totalOrders ? Math.round((deliveredToday.length/totalOrders)*100) : 0;
 
   return `
@@ -6943,7 +7020,7 @@ function buildReportHTML() {
           <div class="rpt-meta-item">Total Orders Today: <strong>${totalOrders}</strong></div>
           <div class="rpt-meta-item">Delivery Completion: <strong>${pct}%</strong></div>
           <div class="rpt-meta-item">Generated: <strong>${today.toLocaleTimeString('en-IN')}</strong></div>
-          <div class="rpt-meta-item">Generated by: <strong>${AUTH.name||'Admin'}</strong></div>
+          <div class="rpt-meta-item">Generated by: <strong>${escHtml(AUTH.name||'Admin')}</strong></div>
         </div>
       </div>
 
@@ -6991,7 +7068,8 @@ function buildReportHTML() {
       </div>` : ''}
 
       <!-- By Area -->
-      ${Object.keys(byArea).length ? `      <div class="rpt-section">
+      ${Object.keys(byArea).length ? `
+      <div class="rpt-section">
         <div class="rpt-section-title">By Area</div>
         <table class="rpt-table">
           <thead><tr>
@@ -7041,19 +7119,38 @@ function buildReportHTML() {
 // ================================================================
 // SEND LOCATION LINKS
 // ================================================================
+function normalizeGithubPagesBase(value) {
+  const fallback = 'https://samruddhigas.github.io/locate';
+  const raw = String(value || fallback).trim();
+  let url;
+  try { url = new URL(raw); } catch (_) { throw new Error('Enter a valid GitHub Pages URL.'); }
+  if (url.protocol !== 'https:' || url.hostname.toLowerCase() !== 'samruddhigas.github.io') {
+    throw new Error('Use the official Samruddhi GitHub Pages host: https://samruddhigas.github.io/locate');
+  }
+  let path = url.pathname.replace(/\/+$/, '');
+  path = path.replace(/\/(dashboard|consumer-location)$/i, '');
+  if (path !== '' && path !== '/locate') {
+    throw new Error('Use the Samruddhi locate site URL, optionally ending in /dashboard.');
+  }
+  return 'https://samruddhigas.github.io/locate';
+}
 function saveGithubUrl() {
-  const url = (document.getElementById('githubPagesUrl').value || '').trim();
-  if (!url) { showToastMain('Enter your GitHub Pages URL first'); return; }
-  localStorage.setItem('lpg_github_url', url);
-  showToastMain('✅ URL saved');
+  const el = document.getElementById('githubPagesUrl');
+  try {
+    const base = normalizeGithubPagesBase(el ? el.value : '');
+    localStorage.setItem('lpg_github_url', base);
+    if (el) el.value = base;
+    showToastMain('✅ Samruddhi GitHub Pages URL saved');
+  } catch (e) { showToastMain('⚠️ ' + e.message); }
 }
-
 function getBaseUrl() {
-  return localStorage.getItem('lpg_github_url') || '';
+  try { return normalizeGithubPagesBase(localStorage.getItem('lpg_github_url') || 'https://samruddhigas.github.io/locate'); }
+  catch (_) { return 'https://samruddhigas.github.io/locate'; }
 }
-
 function getLocLink(consumerNo) { return null; /* Legacy c= links are intentionally disabled; use secure one-time tokens. */ }
-function consumerCapturePageUrl(){const base=(getBaseUrl()||location.href.split('#')[0].replace(/[^/]*$/,'')).replace(/\/$/,'');return base+'/Samruddhi_LPG_Consumer_GPS_Capture.html';}
+function consumerCapturePageUrl() {
+  return getBaseUrl() + '/consumer-location/';
+}
 async function sendGpsLinkToWhatsApp(consumerNo){
   if(!AUTH?.token||!['admin','staff'].includes(AUTH.role)){showToastMain('Office login required');return;}
   const m=(STATE.masters||[]).find(x=>String(x.consumerNo)===String(consumerNo));if(!m){showToastMain('Consumer not found');return;}
@@ -7097,17 +7194,18 @@ function buildLocTable() {
 
     return `<tr>
       <td style="padding:8px 10px">
-        <div style="font-weight:600;font-size:12px">${m.consumerName}</div>
-        <div style="font-size:10px;color:var(--text3)">${m.consumerNo}</div>
+        <div style="font-weight:600;font-size:12px">${escHtml(m.consumerName||'—')}</div>
+        <div style="font-size:10px;color:var(--text3)">${escHtml(m.consumerNo)}</div>
       </td>
-      <td style="padding:8px 10px;font-size:12px">${m.area||'—'}</td>
-      <td style="padding:8px 10px;font-size:12px;font-family:var(--mono)">${m.mobile||'—'}</td>
+      <td style="padding:8px 10px;font-size:12px">${escHtml(m.area||'—')}</td>
+      <td style="padding:8px 10px;font-size:12px;font-family:var(--mono)">${escHtml(m.mobile||'—')}</td>
       <td style="padding:8px 10px">${gpsBadge}</td>
       <td style="padding:8px 10px">
-        ${mobile.length>=10 ? `<button onclick="sendGpsLinkToWhatsApp('${String(m.consumerNo).replace(/'/g,'')}')" style="padding:5px 10px;background:#25D366;color:#fff;border:0;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer">📲 Secure WhatsApp Link</button>` : '<span style="color:var(--text3);font-size:11px">Mobile unavailable</span>'}
+        ${mobile.length>=10 ? `<button data-gps-send="${escAttr(m.consumerNo)}" style="padding:5px 10px;background:#25D366;color:#fff;border:0;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer">📲 Secure WhatsApp Link</button>` : '<span style="color:var(--text3);font-size:11px">Mobile unavailable</span>'}
       </td>
     </tr>`;
   }).join('');
+  tbody.querySelectorAll('[data-gps-send]').forEach(btn => btn.addEventListener('click', () => sendGpsLinkToWhatsApp(btn.dataset.gpsSend)));
 
   if (consumers.length > 200) {
     tbody.insertAdjacentHTML('beforeend',
@@ -7129,29 +7227,10 @@ async function openAllWhatsApp() {
 }
 
 function copyAllLinks() {
-  const base = getBaseUrl();
-  if (!base) { showToastMain('⚠️ Set your GitHub Pages URL first'); return; }
-
-  const tbody = document.getElementById('locTableBody');
-  const rows = tbody.querySelectorAll('tr');
-  const lines = [];
-
-  rows.forEach(r => {
-    const cells = r.querySelectorAll('td');
-    if (cells.length >= 4) {
-      const name   = cells[0]?.querySelector('div')?.textContent || '';
-      const cno    = cells[0]?.querySelectorAll('div')[1]?.textContent || '';
-      const mobile = cells[2]?.textContent?.trim() || '';
-      const link   = getLocLink(cno.trim());
-      if (name && link) lines.push(`${name} (${mobile}): ${link}`);
-    }
-  });
-
-  if (!lines.length) { showToastMain('No links to copy'); return; }
-  navigator.clipboard.writeText(lines.join('\n'))
-    .then(() => showToastMain(`✅ ${lines.length} links copied to clipboard`))
-    .catch(() => showToastMain('❌ Copy failed'));
+  // Legacy c= links are disabled. Fresh one-time secure links are generated by the campaign manager.
+  openAllWhatsApp();
 }
+
 
 // Init sendloc tab when opened
 const _origShowTab = showTab;
@@ -7163,8 +7242,8 @@ function loadDataMgmtCounts() {
   const totalDelivered = Object.values(STATE.deliveredFY).reduce((s,r)=>s+r.length,0);
   const totalCyls      = Object.values(STATE.deliveredFY).flatMap(r=>r).reduce((s,r)=>s+(+r.qty||0),0);
 
-  setText('dmMastersCount',   `${STATE.masters.length.toLocaleString()} consumers in Supabase`);
-  setText('dmDeliveredCount', `${totalDelivered.toLocaleString()} orders · ${totalCyls.toLocaleString()} cylinders`);
+  setText('dmMastersCount',   `${STATE.masters.length.toLocaleString()} consumers loaded from last cloud sync`);
+  setText('dmDeliveredCount', `${totalDelivered.toLocaleString()} orders · ${totalCyls.toLocaleString()} cylinders loaded from last cloud sync`);
   setText('dmPendingCount',   `${STATE.pending.length} orders pending today`);
   setText('dmRemarksCount',   `${Object.keys(STATE.remarks).length} consumer remarks`);
 
@@ -7189,108 +7268,108 @@ function loadDataMgmtCounts() {
   }
 }
 
+async function requireApiMutation(query, label) {
+  const result = await query;
+  if (result && result.error) throw new Error((label ? label + ': ' : '') + (result.error.message || 'API request failed'));
+  return result ? result.data : null;
+}
+
 async function clearData(type, param) {
   const statusEl = document.getElementById('dmStatus');
-  const confirmMsgs = {
-    'masters':       `Delete ALL ${STATE.masters.length.toLocaleString()} consumer masters from Supabase?`,
-    'delivered-all': `Delete ALL delivered records from ALL financial years? This cannot be undone.`,
-    'delivered-fy':  `Delete all delivered records for ${FY_LABELS[param]||param}?`,
-    'pending':       `Clear today's ${STATE.pending.length} pending orders?`,
-    'gps':           `Delete ALL consumer GPS locations from Supabase?`,
-    'remarks':       `Delete ALL ${Object.keys(STATE.remarks).length} consumer remarks?`,
-    'all':           `⚠️ DELETE ALL DATA — masters, deliveries, pending, GPS, remarks?\n\nType YES to confirm:`
-  };
-
-  if (type === 'all') {
-    const confirm = prompt(confirmMsgs['all']);
-    if (confirm !== 'YES') { statusEl.textContent = 'Cancelled.'; return; }
-  } else {
-    if (!window.confirm(confirmMsgs[type])) return;
+  if (!AUTH?.token || AUTH.role !== 'admin') {
+    if (statusEl) { statusEl.style.color='var(--red)'; statusEl.textContent='Admin permission is required for data deletion.'; }
+    return false;
   }
+  if (type === 'all') {
+    if (statusEl) { statusEl.style.color='var(--yellow)'; statusEl.textContent='Full database wipe is disabled in this Dashboard. Use separately reviewed recovery procedures; no data was changed.'; }
+    return false;
+  }
+
+  const confirmMsgs = {
+    masters: `Delete ALL ${STATE.masters.length.toLocaleString()} consumer masters from Supabase?`,
+    'delivered-all': 'Delete ALL delivered records from ALL financial years? This cannot be undone.',
+    'delivered-fy': `Delete all delivered records for ${FY_LABELS[param]||param}?`,
+    pending: `Clear today's ${STATE.pending.length} pending orders?`,
+    gps: 'Delete ALL consumer GPS locations from Supabase?',
+    remarks: `Delete ALL ${Object.keys(STATE.remarks).length} consumer remarks?`
+  };
+  if (!Object.prototype.hasOwnProperty.call(confirmMsgs, type)) {
+    if (statusEl) statusEl.textContent = 'Unsupported data operation. No data was changed.';
+    return false;
+  }
+  if (!window.confirm(confirmMsgs[type])) return false;
 
   if (!DB._client || !DB._online) {
     statusEl.style.color = 'var(--yellow)';
     statusEl.textContent = '⚠️ Not connected to Supabase';
-    return;
+    return false;
   }
-
   statusEl.style.color = 'var(--text2)';
   statusEl.textContent = '⏳ Deleting…';
 
   try {
     switch(type) {
       case 'masters':
-        await DB._client.table('lpg_masters').delete().neq('consumer_no','__never__');
+        await requireApiMutation(DB._client.table('lpg_masters').delete().neq('consumer_no','__never__'), 'Clear masters');
         STATE.masters = [];
         localStorage.removeItem('lpg_masters');
         break;
-
-      case 'delivered-all':
-        // DELETION PROTECTION: require typing "DELETE" to confirm
+      case 'delivered-all': {
         const confirm1 = prompt('⚠️ This will permanently delete ALL delivered cylinder records.\n\nType DELETE (in capitals) to confirm:');
-        if (confirm1 !== 'DELETE') { statusEl.textContent='❌ Cancelled — you must type DELETE exactly'; return; }
-        const confirm2 = prompt('⚠️ FINAL WARNING: ' + (STATE.delivered?.length||0) + ' delivery records will be lost forever.\n\nType YES to proceed:');
-        if (confirm2 !== 'YES') { statusEl.textContent='❌ Cancelled'; return; }
-        await DB._client.table('lpg_delivered').delete().neq('id', 0);
+        if (confirm1 !== 'DELETE') { statusEl.textContent='❌ Cancelled — no data was deleted.'; return false; }
+        const confirm2 = prompt('⚠️ FINAL WARNING: ' + (getAllDeliveredRows().length||0) + ' delivery records will be lost forever.\n\nType YES to proceed:');
+        if (confirm2 !== 'YES') { statusEl.textContent='❌ Cancelled — no data was deleted.'; return false; }
+        await requireApiMutation(DB._client.table('lpg_delivered').delete().neq('id', 0), 'Clear delivered history');
         STATE.deliveredFY = {};
-        STATE.delivered   = [];
+        STATE.delivered = [];
         break;
-
+      }
       case 'delivered-fy':
-        await DB._client.table('lpg_delivered').delete().eq('fy_key', param);
+        await requireApiMutation(DB._client.table('lpg_delivered').delete().eq('fy_key', normalizeFyKeyForDatabase(param)), 'Clear financial-year deliveries');
         delete STATE.deliveredFY[param];
         if (param === STATE.currentFYKey) STATE.delivered = [];
         break;
-
       case 'pending':
-        await DB._client.table('lpg_pending').delete().neq('id', 0);
+        await requireApiMutation(DB._client.table('lpg_pending').delete().neq('id', 0), 'Clear pending bookings');
         STATE.pending = [];
         localStorage.removeItem('lpg_pending');
         break;
-
       case 'gps':
         await gpsApi('clear_all');
         STATE.consumerGPS = {};
+        STATE.gpsApprovals = {};
         _gpsAllRecords = [];
         localStorage.removeItem('lpg_gps');
+        saveGpsApprovals();
+        updateApprovalBadge();
         break;
-
       case 'remarks':
-        await DB._client.table('lpg_remarks').delete().neq('consumer_no','__never__');
+        await requireApiMutation(DB._client.table('lpg_remarks').delete().neq('consumer_no','__never__'), 'Clear remarks');
         STATE.remarks = {};
         localStorage.removeItem('lpg_remarks');
         break;
-
-      case 'all':
-        statusEl.textContent = '⏳ Deleting all tables…';
-        await DB._client.table('lpg_delivered').delete().neq('id',0);
-        await DB._client.table('lpg_masters').delete().neq('consumer_no','__never__');
-        await DB._client.table('lpg_pending').delete().neq('id',0);
-        await gpsApi('clear_all');
-        await DB._client.table('lpg_remarks').delete().neq('consumer_no','__never__');
-        STATE.masters=[]; STATE.delivered=[]; STATE.deliveredFY={}; STATE.pending=[];
-        STATE.remarks={}; STATE.consumerGPS={};
-        ['lpg_masters','lpg_pending','lpg_remarks','lpg_gps'].forEach(k=>localStorage.removeItem(k));
-        break;
     }
-
-    invalidateCache(); rebuildDashboard();
-    loadDataMgmtCounts();
+    invalidateCache(); rebuildDashboard(); loadDataMgmtCounts();
     statusEl.style.color = 'var(--green)';
-    statusEl.textContent = '✅ Done — data cleared successfully';
-
+    statusEl.textContent = '✅ Server confirmed the deletion; Dashboard data refreshed.';
+    return true;
   } catch(e) {
     statusEl.style.color = 'var(--red)';
-    statusEl.textContent = '❌ Error: ' + e.message;
+    statusEl.textContent = '❌ Delete was not confirmed: ' + e.message;
     console.error('clearData error:', e);
+    return false;
   }
 }
-
 
 // ── GPS search & individual clear ──
 let _gpsAllRecords = []; // cached from Supabase
 
 async function searchGpsConsumers() {
+  if (AUTH?.role !== 'admin' || !AUTH?.token) {
+    const blocked=document.getElementById('gpsClearResults');
+    if(blocked) blocked.textContent='GPS deletion tools are admin-only.';
+    return;
+  }
   const q = (document.getElementById('gpsClearSearch').value || '').trim().toLowerCase();
   const resultsEl = document.getElementById('gpsClearResults');
 
@@ -7319,19 +7398,18 @@ async function searchGpsConsumers() {
     return `
       <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface);border-radius:8px;border:1px solid var(--border)">
         <div style="flex:1;min-width:0">
-          <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.consumer_name||'—'}</div>
-          <div style="font-size:10px;color:var(--text3)">${r.consumer_no} · ${acc} · <span style="color:${statusColor}">${r.status||'—'}</span> · ${date}</div>
+          <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.consumer_name||'—')}</div>
+          <div style="font-size:10px;color:var(--text3)">${escHtml(r.consumer_no)} · ${escHtml(acc)} · <span style="color:${statusColor}">${escHtml(r.status||'—')}</span> · ${escHtml(date)}</div>
         </div>
-        <button onclick="clearConsumerGPS('${r.consumer_no}','${(r.consumer_name||'').replace(/'/g,"&#39;")}')"
-          style="padding:5px 10px;background:none;border:1px solid var(--red);color:var(--red);border-radius:6px;font-size:11px;cursor:pointer;white-space:nowrap;flex-shrink:0">
-          🗑 Clear
-        </button>
+        <button data-clear-gps="${escAttr(r.consumer_no)}" data-clear-name="${escAttr(r.consumer_name||'')}" style="padding:5px 10px;background:none;border:1px solid var(--red);color:var(--red);border-radius:6px;font-size:11px;cursor:pointer;white-space:nowrap;flex-shrink:0">🗑 Clear</button>
       </div>`;
   }).join('');
+  resultsEl.querySelectorAll('[data-clear-gps]').forEach(btn => btn.addEventListener('click', () => clearConsumerGPS(btn.dataset.clearGps, btn.dataset.clearName)));
 }
 
 async function clearConsumerGPS(consumerNo, consumerName) {
-  if (!confirm(`Clear GPS location for ${consumerName} (${consumerNo})?`)) return;
+  if (AUTH?.role !== 'admin' || !AUTH?.token) { showToast2('Admin permission is required to delete GPS records.'); return false; }
+  if (!confirm(`Clear GPS location for ${consumerName} (${consumerNo})?`)) return false;
 
   const statusEl = document.getElementById('dmStatus');
   try {
@@ -7360,6 +7438,7 @@ async function clearConsumerGPS(consumerNo, consumerName) {
 let _adminMap = null, _adminMarker = null, _adminAccCircle = null, _pinCno = null;
 
 function openPinMap(cno) {
+  if (!window.L) { showToastMain('Map library unavailable. GPS pin editing is temporarily unavailable.'); return; }
   _pinCno = cno;
   const consumer = getMergedConsumers().find(r => r.consumerNo === cno);
   const gps      = STATE.consumerGPS[cno];
@@ -7436,174 +7515,27 @@ async function savePinLocation() {
 
 
 
-const RESTORE_FN_URL = ''; // Disabled: old-project endpoint must not be called.
-
-// ================================================================
-// RESTORE
-// ================================================================
-function getSelectedRestoreTables() {
-  return [...document.querySelectorAll('.restore-tbl-chk:checked')].map(c => c.value);
-}
-function checkAllRestoreTables(val) {
-  document.querySelectorAll('.restore-tbl-chk').forEach(c => c.checked = val);
-}
-
-async function callRestore(body) {
-  throw new Error('Restore endpoint is disabled in the new-project build until a new-project restore function is implemented.');
-  const res = await fetch(RESTORE_FN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type':'application/json', 'x-api-secret': PROXY_SECRET, 'x-auth-token': AUTH.token||'' },
-    body: JSON.stringify(body)
-  });
-  return await res.json();
-}
-
-function showRestoreResult(data) {
-  const box  = document.getElementById('restoreResult');
-  const body = document.getElementById('restoreResultBody');
-  box.style.display = 'block';
-  if (!data.results) { body.innerHTML = `<span style="color:var(--red)">❌ ${data.error || 'Unknown error'}</span>`; return; }
-  body.innerHTML = data.results.map(r => {
-    const icon = r.ok ? '✅' : '❌';
-    const detail = r.ok ? `${r.restored?.toLocaleString()} rows restored` : r.error;
-    return `<div style="padding:4px 0;border-bottom:1px solid var(--border)">${icon} <strong>${r.table}</strong> — ${detail}</div>`;
-  }).join('');
-  // Re-sync dashboard data
-  if (data.results.some(r => r.ok)) {
-    setTimeout(() => { showToastMain('✅ Restore complete — resyncing data…'); DB.syncAll().then(()=>{ invalidateCache(); filterDashboard(); }); }, 500);
-  }
-}
-
-async function restoreFromSupabase() {
-  const tables = getSelectedRestoreTables();
-  if (!tables.length) { alert('Select at least one table'); return; }
-  if (!confirm(`⚠️ This will OVERWRITE current data in:\n${tables.join(', ')}\n\nAre you sure?`)) return;
-  const btn = document.getElementById('restoreSbBtn');
-  btn.disabled = true; btn.textContent = '⏳ Restoring…';
-  const result = await callRestore({ action:'restore_from_supabase', tables });
-  showRestoreResult(result);
-  btn.disabled = false; btn.textContent = '♻️ Restore from 2nd Supabase';
-  loadRestoreLog();
-}
-
-async function loadGdriveDates() {
-  const el = document.getElementById('gdriveDateList');
-  el.innerHTML = '⏳ Loading available backups…';
-  const result = await callRestore({ action:'list_gdrive_backups' });
-  if (!result.data || !result.data.length) {
-    el.innerHTML = '<span style="color:var(--text3)">No backups found in Google Drive.</span>';
-    return;
-  }
-  el.innerHTML = result.data.map(f => `
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
-      <div>
-        <strong>${f.date}</strong>
-        <span style="color:var(--text2);margin-left:8px">${new Date(f.modified).toLocaleString('en-IN')}</span>
-      </div>
-      <button class="btn btn-primary" onclick="restoreFromGdrive('${f.id}','${f.date}')" style="font-size:11px;padding:4px 12px">♻️ Restore</button>
-    </div>
-  `).join('');
-}
-
-async function restoreFromGdrive(fileId, date) {
-  const tables = getSelectedRestoreTables();
-  if (!tables.length) { alert('Select at least one table'); return; }
-  if (!confirm(`⚠️ Restore from backup dated ${date}?\n\nTables: ${tables.join(', ')}\n\nThis will OVERWRITE current data. Continue?`)) return;
-  document.getElementById('gdriveDateList').innerHTML = '⏳ Downloading and restoring from Google Drive…';
-  const result = await callRestore({ action:'restore_from_gdrive', file_id:fileId, date, tables });
-  showRestoreResult(result);
-  document.getElementById('gdriveDateList').innerHTML = '';
-  loadRestoreLog();
-}
-
-async function loadRestoreLog() {
-  const el = document.getElementById('restoreLogBody');
-  if (!el) return;
-  const result = await callRestore({ action:'get_restore_log' });
-  const v = result.data;
-  if (!v || !v.at) { el.textContent = 'No restore has been run yet.'; return; }
-  const at = new Date(v.at).toLocaleString('en-IN');
-  el.innerHTML = `
-    <div>🕐 <strong>${at}</strong> — by ${v.by||'?'}</div>
-    <div>Source: <strong>${v.source}</strong>${v.date ? ` (date: ${v.date})` : ''}</div>
-    ${v.results ? `<div style="margin-top:4px">${v.results.map(r=>`${r.ok?'✅':'❌'} ${r.table}: ${r.ok?r.restored+' rows':r.error}`).join(' · ')}</div>` : ''}
-  `;
-}
-
-const BACKUP_FN_URL = ''; // Disabled: old-project endpoint must not be called.
+// Backup/restore are intentionally unavailable until reviewed new-project services are deployed.
+function getSelectedRestoreTables(){return [...document.querySelectorAll('.restore-tbl-chk:checked')].map(c=>c.value);}
+function checkAllRestoreTables(){showToastMain('Restore is unavailable: no new-project restore service is deployed.');}
+async function callRestore(){throw new Error('Restore endpoint is not deployed for the NEW project. No records were changed.');}
+async function restoreFromSupabase(){showToastMain('Restore is unavailable: no new-project restore service is deployed.');return false;}
+async function loadGdriveDates(){const el=document.getElementById('gdriveDateList');if(el)el.textContent='Google Drive restore is not configured in this project.';return false;}
+async function restoreFromGdrive(){showToastMain('Google Drive restore is unavailable. No records were changed.');return false;}
+async function loadRestoreLog(){const el=document.getElementById('restoreLogBody');if(el)el.textContent='Restore logging is unavailable because the restore service is not deployed.';return false;}
 
 // ================================================================
 // BACKUP STATUS & MANUAL TRIGGER
 // ================================================================
-async function loadBackupStatus() {
-  const el = document.getElementById('backupStatusBody');
-  if (!el) return;
-  try {
-    const { data } = await DB._client.table('lpg_security')
-      .select('value,updated_at').eq('key','last_backup').maybeSingle();
-    if (!data) { el.innerHTML = '<span style="color:var(--text3)">No backup run yet.</span>'; return; }
-    const v = JSON.parse(data.value || '{}');
-    const at = v.at ? new Date(v.at).toLocaleString('en-IN') : '—';
-    const sb  = v.results?.supabase || '—';
-    const gd  = v.results?.google_drive || '—';
-    const sbColor  = sb  === 'ok' ? 'var(--green)' : sb  === 'not_configured' ? 'var(--text2)' : 'var(--red)';
-    const gdColor  = gd  === 'ok' ? 'var(--green)' : gd  === 'not_configured' ? 'var(--text2)' : 'var(--red)';
-    el.innerHTML = `
-      <div style="margin-bottom:6px">🕐 <strong>Last run:</strong> ${at}</div>
-      <div style="margin-bottom:4px">📊 <strong>Total rows backed up:</strong> ${(v.total_rows||0).toLocaleString()}</div>
-      <div style="margin-bottom:4px">🟦 <strong>2nd Supabase:</strong> <span style="color:${sbColor};font-weight:700">${sb}</span></div>
-      <div style="margin-bottom:8px">📂 <strong>Google Drive:</strong> <span style="color:${gdColor};font-weight:700">${gd}</span></div>
-      ${v.tables ? `<details style="font-size:11px;color:var(--text2)"><summary style="cursor:pointer">Table details</summary><div style="padding-top:6px">${Object.entries(v.tables).map(([t,n])=>`${t}: ${n} rows`).join('<br>')}</div></details>` : ''}
-    `;
-  } catch(e) { el.textContent = 'Error loading status: ' + e.message; }
-}
-
-async function runBackupNow() {
-  const btn = document.getElementById('backupNowBtn');
-  const res = document.getElementById('backupNowResult');
-  btn.disabled = true; btn.textContent = '⏳ Running backup…';
-  res.textContent = '';
-  try {
-    throw new Error('Backup endpoint is disabled in the new-project build until a new-project backup function is implemented.');
-    const response = await fetch(BACKUP_FN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-secret': PROXY_SECRET }
-    });
-    const data = await response.json();
-    if (data.ok) {
-      const sb = data.results?.supabase || '—';
-      const gd = data.results?.google_drive || '—';
-      res.innerHTML = `<span style="color:var(--green)">✅ Backup complete!</span> ${data.total_rows?.toLocaleString()} rows · Supabase: ${sb} · Drive: ${gd}`;
-      loadBackupStatus();
-    } else {
-      res.innerHTML = `<span style="color:var(--red)">❌ ${data.error || 'Backup failed'}</span>`;
-    }
-  } catch(e) {
-    res.innerHTML = `<span style="color:var(--red)">❌ ${e.message}</span>`;
-  }
-  btn.disabled = false; btn.textContent = '💾 Backup Now';
-}
+async function loadBackupStatus(){const el=document.getElementById('backupStatusBody');if(el)el.textContent='Backup service is not deployed. No automatic backup status can be confirmed.';return false;}
+async function runBackupNow(){const el=document.getElementById('backupNowResult');if(el)el.textContent='Backup is unavailable until a new-project backup service is deployed.';return false;}
 
 // ================================================================
 // SECURITY — alerts, login log, force-expire
 // ================================================================
 let _secAlertBadge = 0;
 
-async function proxySecAction(action, extra={}) {
-  return { data: null, error: 'Legacy security proxy is disabled in this new-project build; implement this operation in lpg-api first.' };
-  try {
-    const res = await fetch(PROXY_FN_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-secret': PROXY_SECRET,
-        'x-auth-token': AUTH.token || ''
-      },
-      body: JSON.stringify({ action, ...extra })
-    });
-    return await res.json();
-  } catch(e) { return { data: null, error: { message: e.message } }; }
-}
+async function proxySecAction(){return {data:null,error:'Legacy security proxy is disabled. No external request was sent.'};}
 
 async function loadSecurityAlerts() {
   const box=document.getElementById('secAlertBox');
@@ -7628,7 +7560,7 @@ async function loadLoginLog() {
   if(!DB?._client || !AUTH?.token){tbody.innerHTML='<tr><td colspan="5" style="padding:16px;text-align:center;color:var(--text3)">Sign in as admin to load login history.</td></tr>';return;}
   tbody.innerHTML='<tr><td colspan="5" style="padding:16px;text-align:center;color:var(--text3)">Loading login history…</td></tr>';
   try{
-    const {data,error}=await DB._client.table('lpg_login_log').select('*').limit(100);
+    const {data,error}=await DB._client.table('lpg_login_log').select('*').order('attempted_at',{ascending:false}).limit(100);
     if(error)throw new Error(error.message||'Unable to load login history');
     const rows=(Array.isArray(data)?data:[]).sort((a,b)=>new Date(b.created_at||b.attempted_at||0)-new Date(a.created_at||a.attempted_at||0));
     if(!rows.length){tbody.innerHTML='<tr><td colspan="5" style="padding:16px;text-align:center;color:var(--text3)">No login records found.</td></tr>';return;}
@@ -7867,10 +7799,14 @@ function saveSupabaseConfig() {
   localStorage.setItem('sb_key', key);
   const ok = DB.init(url, key);
   if (ok) {
-    statusEl.textContent = '✅ Saved — testing connection…'; statusEl.style.color='var(--green)';
-    testSupabaseConnection();
+    if (AUTH?.token) {
+      statusEl.textContent = '✅ Key saved — verifying with your signed-in session…'; statusEl.style.color='var(--green)';
+      testSupabaseConnection();
+    } else {
+      statusEl.textContent = '✅ Key saved. Sign in to verify the authenticated API connection.'; statusEl.style.color='var(--green)';
+    }
   } else {
-    statusEl.textContent = '❌ Init failed — check URL/key'; statusEl.style.color='var(--red)';
+    statusEl.textContent = '❌ Init failed — check NEW project URL/key'; statusEl.style.color='var(--red)';
   }
   updateSbCurrentStatus();
 }
@@ -7882,249 +7818,41 @@ async function testSupabaseConnection() {
   const key = localStorage.getItem('sb_key');
   if (!url||!key) { statusEl.textContent='⚠️ No credentials saved'; statusEl.style.color='var(--yellow)'; return; }
   const ok = await DB.test(url, key);
-  if (ok) { statusEl.textContent='✅ Connected!'; statusEl.style.color='var(--green)'; DB._online=true; DB._updateIndicator('online'); }
-  else    { statusEl.textContent='❌ Connection failed — check URL/key'; statusEl.style.color='var(--red)'; }
+  if (ok) {
+    const authenticated = !!(AUTH && AUTH.token);
+    statusEl.textContent = authenticated ? '✅ Authenticated API and database connection verified.' : '✅ API endpoint reachable. Sign in to verify database access.';
+    statusEl.style.color='var(--green)'; DB._online=true; DB._updateIndicator('online');
+  } else {
+    statusEl.textContent='❌ API endpoint test failed — check the NEW project key and network connection.';
+    statusEl.style.color='var(--red)'; DB._online=false; DB._updateIndicator('error');
+  }
   updateSbCurrentStatus();
 }
 
 async function initSupabaseTables() {
   const el = document.getElementById('sbInitStatus');
   if (!DB._client) { el.textContent='⚠️ Connect first (Step 3)'; el.style.color='var(--yellow)'; return; }
-  el.textContent='⏳ Creating tables…'; el.style.color='var(--text2)';
+  el.textContent='⏳ Checking existing tables…'; el.style.color='var(--text2)';
   const result = await DB.initTables();
-  if (result.ok) { el.textContent='✅ Tables ready!'; el.style.color='var(--green)'; }
-  else           { el.textContent='❌ '+result.error+' — create tables manually in Supabase SQL editor'; el.style.color='var(--red)'; }
+  if (result.ok) { el.textContent='✅ Required tables are reachable; no schema changes made.'; el.style.color='var(--green)'; }
+  else           { el.textContent='❌ '+result.error+' — review missing schema in Supabase SQL Editor'; el.style.color='var(--red)'; }
 }
 
 async function enableDatabaseSecurity() {
   const el = document.getElementById('sbSecurityStatus');
-  if (!DB._client) { el.textContent='⚠️ Connect Supabase first (Step 3)'; el.style.color='var(--yellow)'; return; }
-  el.textContent='⏳ Applying security policies…'; el.style.color='var(--text2)';
-
-  // RLS policies — run each as separate statement since Supabase RPC may not support multi-statement
-  const steps = [
-    // Enable RLS on all tables
-    `ALTER TABLE lpg_masters   ENABLE ROW LEVEL SECURITY`,
-    `ALTER TABLE lpg_delivered ENABLE ROW LEVEL SECURITY`,
-    `ALTER TABLE lpg_pending   ENABLE ROW LEVEL SECURITY`,
-    `ALTER TABLE lpg_remarks   ENABLE ROW LEVEL SECURITY`,
-    `ALTER TABLE lpg_gps       ENABLE ROW LEVEL SECURITY`,
-    // Drop existing anon policies first (safe to ignore errors)
-    `DROP POLICY IF EXISTS "anon_no_masters"   ON lpg_masters`,
-    `DROP POLICY IF EXISTS "anon_no_delivered" ON lpg_delivered`,
-    `DROP POLICY IF EXISTS "anon_no_pending"   ON lpg_pending`,
-    `DROP POLICY IF EXISTS "anon_no_remarks"   ON lpg_remarks`,
-    `DROP POLICY IF EXISTS "anon_gps_insert"   ON lpg_gps`,
-    `DROP POLICY IF EXISTS "anon_gps_update"   ON lpg_gps`,
-    `DROP POLICY IF EXISTS "anon_no_gps_read"  ON lpg_gps`,
-    // Block anon from all sensitive tables
-    `CREATE POLICY "anon_no_masters"   ON lpg_masters   FOR ALL TO anon USING (false)`,
-    `CREATE POLICY "anon_no_delivered" ON lpg_delivered FOR ALL TO anon USING (false)`,
-    `CREATE POLICY "anon_no_pending"   ON lpg_pending   FOR ALL TO anon USING (false)`,
-    `CREATE POLICY "anon_no_remarks"   ON lpg_remarks   FOR ALL TO anon USING (false)`,
-    // GPS: anon can write only (delivery app phones)
-    `DROP POLICY IF EXISTS "anon_gps_insert" ON lpg_gps`,
-    `DROP POLICY IF EXISTS "anon_gps_update" ON lpg_gps`,
-    `DROP POLICY IF EXISTS "anon_no_gps_read" ON lpg_gps`,
-  ];
-
-  el.innerHTML = '⚠️ SQL execution is intentionally disabled in the browser. Apply reviewed RLS policies using Supabase SQL Editor; the dashboard API does not expose arbitrary SQL.';
+  if (!el) return;
+  el.textContent = 'No SQL was run. The active lpg-api does not expose arbitrary SQL execution. Review and apply any RLS migration manually in Supabase SQL Editor.';
   el.style.color = 'var(--yellow)';
-  console.warn('RLS SQL statements are not executed by the dashboard API.');
   return;
-
-  if (failed === 0) {
-    el.innerHTML = '✅ Security enabled! Delivery app phones can now only write GPS.';
-    el.style.color = 'var(--green)';
-  } else if (passed > failed) {
-    el.innerHTML = `⚠️ Partially applied (${passed}/${steps.length} steps). Some policies may need manual setup — see console.`;
-    el.style.color = 'var(--yellow)';
-    console.warn('RLS policy errors:', failMsgs);
-    // Show manual SQL fallback
-    showSecurityFallback();
-  } else {
-    el.innerHTML = '❌ Could not apply via API — use manual SQL below.';
-    el.style.color = 'var(--red)';
-    showSecurityFallback();
-  }
-}
-
-function showSecurityFallback() {
-  const sql = `-- Run this in Supabase Dashboard → SQL Editor
-
-ALTER TABLE lpg_masters   ENABLE ROW LEVEL SECURITY;
-ALTER TABLE lpg_delivered ENABLE ROW LEVEL SECURITY;
-ALTER TABLE lpg_pending   ENABLE ROW LEVEL SECURITY;
-ALTER TABLE lpg_remarks   ENABLE ROW LEVEL SECURITY;
-ALTER TABLE lpg_gps       ENABLE ROW LEVEL SECURITY;
-
--- Block phones from reading sensitive tables
-CREATE POLICY "anon_no_masters"   ON lpg_masters   FOR ALL TO anon USING (false);
-CREATE POLICY "anon_no_delivered" ON lpg_delivered FOR ALL TO anon USING (false);
-CREATE POLICY "anon_no_pending"   ON lpg_pending   FOR ALL TO anon USING (false);
-CREATE POLICY "anon_no_remarks"   ON lpg_remarks   FOR ALL TO anon USING (false);
-
--- Phones can write GPS only (no read)
-DROP POLICY IF EXISTS "anon_gps_insert" ON lpg_gps;
-DROP POLICY IF EXISTS "anon_gps_update" ON lpg_gps;
-DROP POLICY IF EXISTS "anon_no_gps_read" ON lpg_gps;`;
-
-  // Show in a modal-like alert with copy button
-  const box = document.createElement('div');
-  box.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;padding:20px;';
-  box.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;max-width:600px;width:100%;max-height:80vh;overflow-y:auto;">
-    <div style="font-size:14px;font-weight:800;margin-bottom:8px;">🔒 Run this SQL manually in Supabase</div>
-    <div style="font-size:11px;color:var(--text2);margin-bottom:12px;">Go to <strong>supabase.com → your project → SQL Editor</strong> → paste and run:</div>
-    <pre style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:11px;overflow-x:auto;white-space:pre-wrap;">${sql}</pre>
-    <div style="display:flex;gap:10px;margin-top:14px;">
-      <button onclick="navigator.clipboard.writeText(${JSON.stringify(sql)}).then(()=>this.textContent='✅ Copied!')" style="padding:10px 18px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">📋 Copy SQL</button>
-      <button onclick="this.closest('div[style*=fixed]').remove()" style="padding:10px 18px;background:var(--card);border:1px solid var(--border);color:var(--text2);border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Close</button>
-    </div>
-  </div>`;
-  document.body.appendChild(box);
 }
 
 async function migrateToSupabase() {
-  const statusEl  = document.getElementById('sbMigrateStatus');
-  const progressEl= document.getElementById('migrateProgress');
-  const stepEl    = document.getElementById('migrateStep');
-  const barEl     = document.getElementById('migrateBar');
-  const detailEl  = document.getElementById('migrateDetail');
-  const btn       = document.getElementById('migrateBtn');
-  if (!DB._client || !DB._online) {
+  const statusEl = document.getElementById('sbMigrateStatus');
+  if (statusEl) {
     statusEl.style.color = 'var(--yellow)';
-    statusEl.textContent = '⚠️ Not connected to Supabase — configure in steps above first';
-    return;
+    statusEl.textContent = 'Legacy bulk migration is disabled because it could overwrite delivered records or clear the live pending table. Use the separate validated Masters, Delivered and Pending import workflows instead. No cloud data was changed.';
   }
-
-  btn.disabled = true;
-  btn.textContent = '⏳ Uploading…';
-  progressEl.style.display = 'block';
-  statusEl.textContent = '';
-
-  function setProgress(pct, step, detail) {
-    barEl.style.width   = pct + '%';
-    stepEl.textContent  = step;
-    detailEl.textContent= detail || '';
-  }
-
-  try {
-    let totalChunks = 0, doneChunks = 0;
-
-    // ── MASTERS ──
-    if (STATE.masters.length) {
-      setProgress(5, '⏳ Uploading masters…', `${STATE.masters.length} consumers`);
-      const mapped = STATE.masters.map(r => ({
-        consumer_no: r.consumerNo, consumer_name: r.consumerName, status: r.status,
-        mobile: r.mobile, nature: r.nature, ekyc: r.ekyc, ekyc_date: r.ekycDate,
-        hose_validity: r.hoseValidity, mi_date: r.miDate, area: r.area,
-        address: r.address, last_refill: r.lastRefill, last_refill_src: r.lastRefillSource,
-        consumer_type: r.consumerType, safety_status: r.safetyStatus,
-        sub_nature: r.subNature, masked_aadhar: r.maskedAadhar,
-        updated_at: new Date().toISOString()
-      }));
-      const MCHUNK = 100;
-      totalChunks = Math.ceil(mapped.length / MCHUNK);
-      for (let i = 0; i < mapped.length; i += MCHUNK) {
-        doneChunks++;
-        const pct = 5 + Math.round((doneChunks / totalChunks) * 20);
-        setProgress(pct, '⏳ Uploading masters…',
-          `${Math.min(i+MCHUNK,mapped.length)} of ${mapped.length} consumers`);
-        const { error } = await DB._client.table('lpg_masters')
-          .upsert(mapped.slice(i, i+MCHUNK), { onConflict:'consumer_no' });
-        if (error) throw new Error('Masters: ' + error.message);
-        await new Promise(r => setTimeout(r, 80));
-      }
-      setProgress(25, '✅ Masters uploaded', `${STATE.masters.length} consumers`);
-    } else {
-      setProgress(25, '⏭ Masters — no local data', '');
-    }
-
-    // ── DELIVERED (all FY buckets) ──
-    const allFYKeys = Object.keys(STATE.deliveredFY).filter(fy => STATE.deliveredFY[fy].length > 0);
-    const allDelivered = allFYKeys.flatMap(fy => STATE.deliveredFY[fy]);
-    if (allDelivered.length) {
-      totalChunks = Math.ceil(allDelivered.length / 500);
-      doneChunks  = 0;
-      setProgress(25, '⏳ Uploading deliveries…', `${allDelivered.length} records`);
-
-      for (const fy of allFYKeys) {
-        const rows = STATE.deliveredFY[fy];
-        const mapped = rows.map(r => ({
-          cash_memo: r.cashMemo, order_no: r.orderNo, consumer_no: r.consumerNo,
-          consumer_name: r.consumerName, nature: r.nature, package: r.package,
-          delivery_date: (() => { const d = parseDate(r.deliveryDate); if (!d) throw new Error('Invalid delivery date for Order No ' + r.orderNo + ': ' + r.deliveryDate); return String(d.getFullYear()).padStart(4,'0') + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); })(), delivery_man: r.deliveryMan, mobile: r.mobile,
-          address: r.address, rsp: r.rsp, area: r.area, ekyc: r.ekyc,
-          order_source: r.orderSource, ivrs_no: r.ivrsNo,
-          qty: +r.qty||1, fy_key: fy
-        }));
-        const DCHUNK = 200;
-        for (let i = 0; i < mapped.length; i += DCHUNK) {
-          doneChunks++;
-          const pct = 25 + Math.round((doneChunks / totalChunks) * 50);
-          setProgress(pct, `⏳ Uploading deliveries — ${fy}…`,
-            `${Math.min(i+DCHUNK,mapped.length)} of ${mapped.length} records`);
-          const { error } = await DB._client.table('lpg_delivered')
-            .upsert(mapped.slice(i, i+DCHUNK), { onConflict:'cash_memo' });
-          if (error) throw new Error('Delivered: ' + error.message);
-          await new Promise(r => setTimeout(r, 60));
-        }
-      }
-      setProgress(75, '✅ Deliveries uploaded', `${allDelivered.length} records`);
-    } else {
-      setProgress(75, '⏭ Deliveries — no local data', 'Upload Excel files first');
-    }
-
-    // ── PENDING ──
-    if (STATE.pending.length) {
-      setProgress(80, '⏳ Uploading pending…', `${STATE.pending.length} orders`);
-      await DB._client.table('lpg_pending').delete().neq('id', 0);
-      const mapped = STATE.pending.map(r => ({
-        consumer_no: r.consumerNo, consumer_name: r.consumerName, order_no: r.orderNo,
-        order_status: r.orderStatus, order_date: r.orderDate, area: r.area,
-        delivery_man: r.deliveryMan, mobile: r.mobile, address: r.address,
-        ekyc: r.ekyc, ivrs_no: r.ivrsNo, qty: +r.qty||1, nature: r.nature
-      }));
-      for (let i = 0; i < mapped.length; i += 500) {
-        const { error } = await DB._client.table('lpg_pending').insert(mapped.slice(i, i+500));
-        if (error) throw new Error('Pending: ' + error.message);
-      }
-      setProgress(90, '✅ Pending uploaded', `${STATE.pending.length} orders`);
-    } else {
-      setProgress(90, '⏭ Pending — no data today', '');
-    }
-
-    // ── REMARKS ──
-    const remarkEntries = Object.entries(STATE.remarks);
-    if (remarkEntries.length) {
-      setProgress(92, '⏳ Uploading remarks…', `${remarkEntries.length} remarks`);
-      for (let i = 0; i < remarkEntries.length; i += 500) {
-        const chunk = remarkEntries.slice(i, i+500).map(([cno, d]) => ({
-          consumer_no: cno, call_status: d.call||null,
-          r1: d.r1||null, r2: d.r2||null, r3: d.r3||null,
-          updated_at: new Date().toISOString()
-        }));
-        const { error } = await DB._client.table('lpg_remarks')
-          .upsert(chunk, { onConflict:'consumer_no' });
-        if (error) throw new Error('Remarks: ' + error.message);
-      }
-    }
-
-    // ── DONE ──
-    setProgress(100, '✅ Upload complete!', '');
-    const cylTotal = allDelivered.reduce((s,r) => s+(+r.qty||0), 0);
-    statusEl.style.color  = 'var(--green)';
-    statusEl.innerHTML = `✅ <strong>${STATE.masters.length}</strong> consumers · <strong>${allDelivered.length}</strong> orders · <strong>${cylTotal}</strong> cylinders · <strong>${STATE.pending.length}</strong> pending — all saved to Supabase`;
-    btn.textContent = '✅ Upload Complete';
-
-  } catch(e) {
-    setProgress(0, '❌ Upload failed', e.message);
-    statusEl.style.color = 'var(--red)';
-    statusEl.textContent = '❌ ' + e.message;
-    btn.disabled = false;
-    btn.textContent = '⬆️ Retry Upload';
-    console.error('migrateToSupabase error:', e);
-  }
+  return false;
 }
 
 function updateSbCurrentStatus() {
@@ -8133,14 +7861,14 @@ function updateSbCurrentStatus() {
   const key = localStorage.getItem('sb_key');
   if (!url) { el.innerHTML='<span style="color:var(--text3)">Not configured — follow steps above to connect</span>'; return; }
   el.innerHTML=`
-    <div>URL: <code style="background:var(--surface2);padding:1px 6px;border-radius:3px;font-size:11px">${url}</code></div>
+    <div>URL: <code style="background:var(--surface2);padding:1px 6px;border-radius:3px;font-size:11px">${escHtml(url)}</code></div>
     <div style="margin-top:4px">Status: ${DB._online?'<span style="color:var(--green)">🟢 Connected</span>':'<span style="color:var(--yellow)">🟡 Not connected — click Test Connection</span>'}</div>
-    <div style="margin-top:4px;font-size:11px;color:var(--text3)">Key: ${key?key.substring(0,20)+'…':'not set'}</div>
+    <div style="margin-top:4px;font-size:11px;color:var(--text3)">Key: ${key?escHtml(key.substring(0,20)+'…'):'not set'}</div>
   `;
 }
 
-function saveGasUrl(){localStorage.setItem('gasUrl',(document.getElementById('gasUrl')||{value:''}).value);}
-function testConnection(){const url=(document.getElementById('gasUrl')||{value:''}).value,s=document.getElementById('connectionStatus');if(!url){s.textContent='⚠️ Enter URL first';s.style.color='var(--yellow)';return;}s.textContent='⏳ Testing…';s.style.color='var(--text2)';fetch(url+'?action=ping').then(r=>r.json()).then(()=>{s.textContent='✅ Connected!';s.style.color='var(--green)';}).catch(()=>{s.textContent='❌ Failed';s.style.color='var(--red)';});}
+function saveGasUrl(){ showToastMain('Legacy gas URL settings are disabled. This Dashboard uses the NEW project lpg-api only.'); }
+function testConnection(){ testSupabaseConnection(); }
 
 // ================================================================
 // HELPERS
@@ -8190,7 +7918,7 @@ function statusBadge(s){
   if(st==='Blocked'||st==='Blacklisted') return '<span class="badge badge-red">Blocked</span>';
   if(st==='Inactive')    return '<span class="badge badge-gray">Inactive</span>';
   if(st==='Surrendered') return '<span class="badge badge-gray">Surrendered</span>';
-  return '<span class="badge badge-gray">'+st+'</span>';
+  return '<span class="badge badge-gray">'+escHtml(st)+'</span>';
 }
 function natBadge(n){
   if(!n) return 'badge-gray';
@@ -8210,8 +7938,8 @@ function shortNat(n){
   if(/^1\s*-|^Domestic/i.test(n)) return 'Domestic';
   return n.substring(0,10);
 }
-function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
-function escAttr(s){return String(s||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;');}
+function escHtml(s){return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function escAttr(s){return escHtml(s);}
 function parseNum(el){if(!el||el.value==='') return null;const n=parseFloat(el.value);return isNaN(n)?null:n;}
 
 // Normalise raw HPCL eKYC value → clean "DONE" or "PENDING"
@@ -8263,7 +7991,6 @@ function isEkycDone(val) {
   if (s.includes('done') || s.includes('complete') || s.includes('otp')) return true;
   return false;
 }
-
 // ================================================================
 // DELIVERY MAN PERFORMANCE TAB
 // ================================================================
@@ -8312,14 +8039,14 @@ function handleHistoricalUpload(input) {
         if (!STATE.deliveredFY[detectedFY]) STATE.deliveredFY[detectedFY] = [];
         // Same strict cross-FY identity reconciliation as the daily import.
         const {newRows} = reconcileIncomingDeliveredRows(normalized);
-        const mergedDelivered = STATE.deliveredFY[detectedFY].concat(newRows)
-          .sort((a,b)=>a.deliveryDate>b.deliveryDate?1:-1);
-        const uploadResult = normalized.length ? await DB.saveDelivered(normalized, detectedFY) : {ok:true,inserted:0,duplicatesSkipped:0,fy_key:normalizeFyKeyForDatabase(detectedFY)};
-        STATE.deliveredFY[detectedFY] = mergedDelivered;
-        invalidateCache(); rebuildDashboard();
-        const _histPostImportSync = await DB.syncAll(false);
-        statusEl.className='upload-status ' + (_histPostImportSync ? 'success' : 'error');
-        statusEl.textContent=`${_histPostImportSync?'✅':'⚠️'} Supabase confirmed ${uploadResult.inserted} inserted · ${uploadResult.duplicatesSkipped} already existed · ${FY_LABELS[detectedFY]||detectedFY} (${STATE.deliveredFY[detectedFY].length} verified local rows)${_histPostImportSync?'':' · Cloud re-sync failed; refresh and verify before another upload'}`;
+        const preExistingCount = normalized.length - newRows.length;
+        const uploadResult = normalized.length ? await DB.saveDelivered(normalized, detectedFY) : {ok:true,uploaded:0,fy_key:normalizeFyKeyForDatabase(detectedFY)};
+        if (!uploadResult || uploadResult.ok !== true) throw new Error('Historical delivered import API did not acknowledge the upload.');
+        const histPostImportSync = await DB.syncAll(false);
+        if (!histPostImportSync) throw new Error('The API accepted the historical upload, but cloud read-back failed. The previous Dashboard state was retained.');
+        const verifiedHistorical = verifyDeliveredImportRows(normalized);
+        statusEl.className='upload-status success';
+        statusEl.textContent=`✅ ${verifiedHistorical} historical Order No(s) verified in Supabase · ${FY_LABELS[detectedFY]||detectedFY} (${STATE.deliveredFY[detectedFY]?.length||0} cloud records)${preExistingCount ? ` · ${preExistingCount} already present before upload` : ''}`;
         invalidateCache(); renderFYPills(); updateFYDataSummary();
         if (_currentTab==='fy-records') buildFYTable();
       } catch(err) {
@@ -8339,18 +8066,19 @@ function updateFYDataSummary() {
     const isCurrent = fy === STATE.currentFYKey;
     return `<span style="font-size:11px;padding:3px 10px;border-radius:10px;background:${isCurrent?'rgba(63,185,80,.15)':'var(--surface2)'};border:1px solid ${isCurrent?'var(--green)':'var(--border)'};color:${count?'var(--text)':'var(--text3)'};">
       ${FY_LABELS[fy]}: <strong>${count||0}</strong> records
-      ${count?`<span style="cursor:pointer;color:var(--red);margin-left:4px;" onclick="clearFYData('${fy}')" title="Clear this FY data">✕</span>`:''}
+      ${count?`<span style="cursor:pointer;color:var(--red);margin-left:4px;" onclick="clearFYData('${fy}')" title="Clear this FY from this browser only; cloud records remain">✕</span>`:''}
     </span>`;
   }).join('');
 }
 
 function clearFYData(fy) {
   if (fy === STATE.currentFYKey) { alert("Can't clear current FY data from here. Use the main upload section."); return; }
-  if (!confirm(`Clear all data for ${FY_LABELS[fy]||fy}? This cannot be undone.`)) return;
+  if (!confirm(`Remove the local browser cache for ${FY_LABELS[fy]||fy}? This does NOT delete Supabase records; a cloud sync will restore them.`)) return;
   STATE.deliveredFY[fy] = [];
   localStorage.removeItem('lpg_del_'+fy);
   invalidateCache(); renderFYPills(); updateFYDataSummary();
   if (_currentTab==='fy-records') buildFYTable();
+  showToastMain('Local FY cache cleared. Supabase records were not deleted.');
 }
 
 function buildDeliveryManTab() {
@@ -8419,11 +8147,11 @@ function buildDeliveryManTab() {
       appBtns.innerHTML = '<span style="font-size:11px;color:var(--text3)">No pending orders loaded — upload pending file first</span>';
     } else {
       appBtns.innerHTML = dms.map(dm =>
-        `<button onclick="generateDeliveryApp('${escAttr(dm)}')"
-          style="padding:8px 14px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">
-          📱 ${dm} <span style="opacity:.75;font-size:10px;">(${byDM[dm]} cyl)</span>
+        `<button data-dm-app="${escAttr(dm)}" style="padding:8px 14px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">
+          📱 ${escHtml(dm)} <span style="opacity:.75;font-size:10px;">(${byDM[dm]} cyl)</span>
         </button>`
       ).join('');
+      appBtns.querySelectorAll('[data-dm-app]').forEach(btn => btn.addEventListener('click', () => generateDeliveryApp(btn.dataset.dmApp)));
     }
   }
 }
@@ -8636,6 +8364,13 @@ function openDepotPinDrop() {
   if (saved) {
     try { const d = JSON.parse(saved); center = [d.lat, d.lng]; } catch(e) {}
   }
+  if (!window.L) {
+    document.getElementById('depotManualLat').value = Number(center[0]).toFixed(6);
+    document.getElementById('depotManualLng').value = Number(center[1]).toFixed(6);
+    document.getElementById('depotPinCoords').textContent = 'Map service unavailable — enter coordinates manually below.';
+    showToastMain('Map unavailable. You can enter depot coordinates manually.');
+    return;
+  }
 
   setTimeout(() => {
     if (!_depotPinMap) {
@@ -8776,13 +8511,14 @@ async function buildRouteOptimizer() {
     return;
   }
 
-  statusEl.textContent = '⏳ Geocoding areas…';
+  const areas = [...new Set(STATE.pending.map(p => String(p.area || '').trim()).filter(Boolean))].sort();
+  statusEl.textContent = areas.length ? '⏳ Geocoding delivery areas…' : '⚠️ No delivery areas found; GPS pins only will be used.';
 
   // Geocode all areas (with small delay to respect Nominatim rate limit)
   for (let i = 0; i < areas.length; i++) {
     statusEl.textContent = `⏳ Geocoding areas… ${i+1}/${areas.length}`;
     await geocodeArea(areas[i]);
-    await new Promise(r => setTimeout(r, 250)); // 4 req/sec max
+    await new Promise(r => setTimeout(r, 1100)); // respect Nominatim public service usage guidance
   }
 
   // Group pending by DM → by area, but use consumer GPS if available
@@ -8809,7 +8545,7 @@ async function buildRouteOptimizer() {
              noCoords: Object.values(areaMap).filter(s => !s.coords).map(s => s.area) };
   }).sort((a,b) => b.totalOrders - a.totalOrders);
 
-  statusEl.textContent = `✅ Routes optimized for ${_routeData.length} delivery men`;
+  statusEl.textContent = `✅ Area-level route estimates prepared for ${_routeData.length} delivery men. This is not an office-approved customer stop sequence.`;
   renderRouteMap(depot);
   renderRouteSummaryCards();
   renderRouteTables();
@@ -8819,8 +8555,10 @@ async function buildRouteOptimizer() {
 function populateDMSelect() {
   const sel = document.getElementById('routeDMSelect'); if (!sel) return;
   const dms = _routeData.map(r => r.dm);
-  sel.innerHTML = '<option value="">— All (overview map) —</option>' +
-    dms.map(d => `<option value="${escAttr(d)}">${d}</option>`).join('');
+  const current = sel.value;
+  sel.replaceChildren(new Option('— All (overview map) —', ''));
+  dms.forEach(d => sel.add(new Option(String(d), String(d))));
+  if (dms.includes(current)) sel.value = current;
 }
 
 const DM_COLORS = ['#3fb950','#58a6ff','#f0883e','#bc8cff','#ff7b72','#ffa657','#79c0ff','#56d364'];
@@ -8830,6 +8568,7 @@ function renderRouteMap(depot) {
   if (_routeMap) { _routeMap.remove(); _routeMap = null; }
   const mapEl = document.getElementById('routeMap');
   if (!mapEl) return;
+  if (!window.L) { mapEl.textContent = 'Map library unavailable. Area summary and route tables remain available below.'; return; }
   _routeMap = L.map('routeMap').setView([depot.lat, depot.lng], 13);
   L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors', maxZoom: 18
@@ -8850,10 +8589,10 @@ function renderRouteMap(depot) {
         html: `<div style="background:${color};color:#fff;min-width:22px;height:22px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;border:2px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,.3);padding:0 4px;">${si+1}</div>`,
         iconSize: [22,22], iconAnchor:[11,11], className:''
       });
-      const popupHtml = `<b>${si+1}. ${stop.area}</b><br>
-        <span style="color:#666">${route.dm}</span><br>
+      const popupHtml = `<b>${si+1}. ${escHtml(stop.area)}</b><br>
+        <span style="color:#666">${escHtml(route.dm)}</span><br>
         ${stop.consumers.length} orders · ${stop.consumers.reduce((s,c)=>s+(c.qty||1),0)} cyls<br>
-        <small>${stop.consumers.map(c=>c.consumerNo).join(', ')}</small>`;
+        <small>${stop.consumers.map(c=>escHtml(c.consumerNo)).join(', ')}</small>`;
       L.marker([stop.coords.lat, stop.coords.lng], { icon }).addTo(_routeMap).bindPopup(popupHtml);
     });
 
@@ -8875,14 +8614,15 @@ function renderRouteSummaryCards() {
   el.innerHTML = _routeData.map((r, i) => {
     const color = DM_COLORS[i % DM_COLORS.length];
     const warn = r.noCoords.length ? `<div style="font-size:9px;color:var(--yellow);margin-top:2px;">⚠️ ${r.noCoords.length} area(s) not mapped</div>` : '';
-    return `<div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${color};border-radius:8px;padding:10px 14px;min-width:160px;cursor:pointer;" onclick="filterRouteByDM('${escAttr(r.dm)}')">
-      <div style="font-size:11px;font-weight:700;color:${color}">${r.dm}</div>
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${color};border-radius:8px;padding:10px 14px;min-width:160px;cursor:pointer;" data-route-dm="${escAttr(r.dm)}">
+      <div style="font-size:11px;font-weight:700;color:${color}">${escHtml(r.dm)}</div>
       <div style="font-size:18px;font-weight:700;margin:2px 0">${r.totalOrders} <span style="font-size:11px;color:var(--text2)">orders</span></div>
       <div style="font-size:11px;color:var(--text2)">${r.totalQty} cyls · ~${r.dist} km</div>
       <div style="font-size:10px;color:var(--text3)">${r.optimized.length} stops</div>
       ${warn}
     </div>`;
   }).join('');
+  el.querySelectorAll('[data-route-dm]').forEach(card => card.addEventListener('click', () => filterRouteByDM(card.dataset.routeDm)));
 }
 
 function renderRouteTables() {
@@ -8894,22 +8634,22 @@ function renderRouteTables() {
     const color = DM_COLORS[_routeData.indexOf(r) % DM_COLORS.length];
     const rows = r.optimized.map((stop, si) => {
       const consumers = stop.consumers.map(c =>
-        `<a class="consumer-link" href="LPG_Dashboard.html#consumer=${escAttr(c.consumerNo)}" onclick="showHistory('${escAttr(c.consumerNo)}');return false;" style="font-size:10px">${c.consumerNo}</a>`
+        `<a class="consumer-link" href="#" onclick="event.preventDefault();showHistory(this.dataset.historyConsumer)" data-history-consumer="${escAttr(c.consumerNo)}" style="font-size:10px">${escHtml(c.consumerNo)}</a>`
       ).join(' ');
       return `<tr>
         <td style="text-align:center"><span style="background:${color};color:#fff;width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">${si+1}</span></td>
-        <td style="font-weight:600">${stop.area}</td>
+        <td style="font-weight:600">${escHtml(stop.area)}</td>
         <td style="text-align:center;font-family:var(--mono)">${stop.consumers.length}</td>
         <td style="text-align:center;font-family:var(--mono)">${stop.consumers.reduce((s,c)=>s+(c.qty||1),0)}</td>
         <td style="font-family:var(--mono);font-size:10px;color:var(--text2)">${stop.distFromPrev?stop.distFromPrev.toFixed(1)+' km':'—'}</td>
         <td style="font-size:10px">${consumers}</td>
       </tr>`;
     }).join('');
-    const warnRow = r.noCoords.length ? `<tr><td colspan="6" style="color:var(--yellow);font-size:10px;padding:6px 10px;">⚠️ Areas not geocoded (no map pin): ${r.noCoords.join(', ')}</td></tr>` : '';
+    const warnRow = r.noCoords.length ? `<tr><td colspan="6" style="color:var(--yellow);font-size:10px;padding:6px 10px;">⚠️ Areas not geocoded (no map pin): ${r.noCoords.map(escHtml).join(', ')}</td></tr>` : '';
     return `<div style="margin-bottom:16px;">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
         <span style="width:12px;height:12px;border-radius:50%;background:${color};display:inline-block"></span>
-        <strong style="font-size:13px">${r.dm}</strong>
+        <strong style="font-size:13px">${escHtml(r.dm)}</strong>
         <span style="font-size:11px;color:var(--text2)">${r.totalOrders} orders · ${r.totalQty} cyls · ~${r.dist} km · ${r.optimized.length} stops</span>
       </div>
       <div class="table-scroll">
@@ -8971,16 +8711,26 @@ DB.syncGPS = async function() {
     const data = Array.isArray(result.data) ? result.data : [];
     let autoApproved=0, queued=0;
     const now = new Date().toISOString();
+    const localOnly = Object.fromEntries(Object.entries(STATE.gpsApprovals||{}).filter(([,r])=>r && r.localOnly===true));
+    const approvedNext={}, pendingNext={};
     data.forEach(r => {
       const cno=String(r.consumer_no||'').trim(); if(!cno) return;
       const rec={lat:Number(r.lat),lng:Number(r.lng),acc:Number(r.acc)||99,count:Number(r.count)||1,
         capturedAt:r.captured_at||now,status:r.status||'capturing',source:r.source||'delivery_app',
         rawLat:r.raw_lat??null,rawLng:r.raw_lng??null,pinLat:r.pin_lat??r.lat,pinLng:r.pin_lng??r.lng,captureMode:r.capture_mode||'',
-        consumerName:r.consumer_name||lookupConsumerName(cno),area:r.area||'',dmName:r.dm_name||''};
+        consumerName:r.consumer_name||lookupConsumerName(cno),area:r.area||'',dmName:r.dm_name||'',cloudSynced:true};
       if (rec.status==='approved' || rec.source==='approved' || rec.source==='staff_pin') {
-        STATE.consumerGPS[cno]=rec; delete STATE.gpsApprovals[cno]; autoApproved++;
-      } else { STATE.gpsApprovals[cno]={...rec,submittedAt:rec.capturedAt,importedAt:now}; queued++; }
+        approvedNext[cno]=rec; autoApproved++;
+      } else { pendingNext[cno]={...rec,submittedAt:rec.capturedAt,importedAt:now}; queued++; }
     });
+    // Cloud is authoritative for all previously-synced GPS entries. Keep only
+    // explicitly tagged local-only imports that failed to upload, so a later
+    // cloud sync cannot silently resurrect a rejected/deleted location locally.
+    Object.entries(localOnly).forEach(([cno,rec])=>{
+      if(!approvedNext[cno]&&!pendingNext[cno]) pendingNext[cno]=rec;
+    });
+    STATE.consumerGPS=approvedNext;
+    STATE.gpsApprovals=pendingNext;
     try { localStorage.setItem('lpg_gps',JSON.stringify(STATE.consumerGPS)); } catch(e){}
     saveGpsApprovals(); updateApprovalBadge(); renderApprovalStats(); updateGPSCoverage();
     return {autoApproved,queued};
@@ -8989,9 +8739,12 @@ DB.syncGPS = async function() {
 
 // Auto-poll Supabase every 5 minutes — fully silent, no UI interruption
 let _gpsPollTimer = null;
-function startGPSAutoPoll() {  if (_gpsPollTimer) return; // already running
+function startGPSAutoPoll() {
+  if (!AUTH?.token || !['admin','staff'].includes(AUTH.role)) return;
+  if (_gpsPollTimer) return; // already running
   const POLL_MS = 5 * 60 * 1000; // 5 minutes
   async function poll() {
+    if (!AUTH?.token || !['admin','staff'].includes(AUTH.role)) { stopGPSAutoPoll(); return; }
     if (!DB._client || !DB._online) return;
     const result = await DB.syncGPS();
     // Update badge and stats if anything changed
@@ -9007,12 +8760,15 @@ function startGPSAutoPoll() {  if (_gpsPollTimer) return; // already running
   poll(); // run immediately on start
   _gpsPollTimer = setInterval(poll, POLL_MS);
 }
+function stopGPSAutoPoll() {
+  if (_gpsPollTimer) { clearInterval(_gpsPollTimer); _gpsPollTimer = null; }
+}
 
 // Start auto-poll once DB is ready (called after Supabase init)
 const _origDBInit = DB.init.bind(DB);
 DB.init = function(url, key) {
   const result = _origDBInit(url, key);
-  if (result) setTimeout(startGPSAutoPoll, 2000); // give DB 2s to connect
+  if (result && AUTH?.token && ['admin','staff'].includes(AUTH.role)) setTimeout(startGPSAutoPoll, 2000); // office-only GPS polling after login
   return result;
 };
 
@@ -9099,85 +8855,91 @@ function updateApprovalBadge() {
 }
 
 // Same thresholds as delivery app
-const AUTO_APPROVE_READINGS = 5;
-const AUTO_APPROVE_ACCURACY = 5; // metres
 
 // Evaluate one GPS record — auto-approve if meets threshold, queue for review otherwise
+// Legacy JSON GPS exports do not carry enough trusted evidence for automatic
+// approval. They are always queued for office review; the backend's live capture
+// action separately validates recent readings, accuracy, stability and pin offset.
 function _evaluateGPSRecord(cno, sub) {
   const now = new Date().toISOString();
-  if ((sub.count||0) >= AUTO_APPROVE_READINGS && (sub.acc||99) <= AUTO_APPROVE_ACCURACY) {
-    // Auto-approve silently
-    STATE.consumerGPS[cno] = { lat:sub.lat, lng:sub.lng, acc:sub.acc, capturedAt:now,
-      status:'approved', source:'approved', count:sub.count, autoApproved:true };
-    delete STATE.gpsApprovals[cno];
-    if (DB._client && DB._online) gpsApi('save',{consumer_no:cno,lat:sub.lat,lng:sub.lng,acc:sub.acc,source:'approved'}).catch(()=>{});
-    return 'approved';
-  } else {
-    // Queue for manual review
-    STATE.gpsApprovals[cno] = { ...sub, importedAt:now };
-    return 'pending';
-  }
+  STATE.gpsApprovals[cno] = { ...sub, importedAt:now, status:'capturing', legacyImport:true, localOnly:true, cloudSynced:false };
+  return 'pending';
 }
 
 // Import GPS file from delivery man
 function handleGPSFileImport(input) {
+  if (AUTH?.role !== 'admin' || !AUTH?.token) {
+    if (input) input.value='';
+    alert('Admin permission is required to import GPS files.');
+    return;
+  }
   const file = input.files[0]; if (!file) return;
   const reader = new FileReader();
   reader.onload = async e => {
     try {
       const data = JSON.parse(e.target.result);
-      let autoApproved = 0, queued = 0;
+      let queued = 0;
+      const importedCnos = new Set();
       const pending = data.pending || data.gpsData || {};
       const allData = data.allData || {};
 
-      // Process pending submissions
       Object.entries(pending).forEach(([cno, sub]) => {
-        if (!sub.lat || !sub.lng) return;
+        if (!sub || !Number.isFinite(Number(sub.lat)) || !Number.isFinite(Number(sub.lng))) return;
         const enriched = {
           ...sub,
+          lat:Number(sub.lat), lng:Number(sub.lng), acc:Number(sub.acc ?? 99), count:Number(sub.count ?? 1),
           consumerName: sub.consumerName || allData[cno]?.submitted?.consumerName || lookupConsumerName(cno),
-          area:         sub.area || allData[cno]?.submitted?.area || '',
-          dmName:       sub.dmName || data.dmName || 'Unknown',
+          area: sub.area || allData[cno]?.submitted?.area || '',
+          dmName: sub.dmName || data.dmName || 'Unknown'
         };
-        const result = _evaluateGPSRecord(cno, enriched);
-        if (result==='approved') autoApproved++; else queued++;
+        _evaluateGPSRecord(cno, enriched);
+        importedCnos.add(String(cno));
+        queued++;
       });
 
-      // Also check allData for pending/capturing records not yet in pending{}
-      Object.entries(allData).forEach(([cno, s]) => {
-        if (pending[cno]) return; // already handled
-        const src = (s.status==='pending' && s.submitted) ? s.submitted
-                  : (s.status==='capturing' && s.averaged && s.averaged.count>=AUTO_APPROVE_READINGS) ? s.averaged
+      Object.entries(allData).forEach(([cno, entry]) => {
+        if (pending[cno]) return;
+        const src = (entry?.status==='pending' && entry.submitted) ? entry.submitted
+                  : (entry?.status==='capturing' && entry.averaged && entry.averaged.lat != null) ? entry.averaged
                   : null;
-        if (!src || !src.lat) return;
-        const enriched = { ...src,
+        if (!src || !Number.isFinite(Number(src.lat)) || !Number.isFinite(Number(src.lng))) return;
+        const enriched = { ...src, lat:Number(src.lat), lng:Number(src.lng), acc:Number(src.acc ?? 99), count:Number(src.count ?? 1),
           consumerName: src.consumerName || lookupConsumerName(cno),
-          area: src.area || '', dmName: data.dmName || 'Unknown'
-        };
-        const result = _evaluateGPSRecord(cno, enriched);
-        if (result==='approved') autoApproved++; else queued++;
+          area: src.area || '', dmName: src.dmName || data.dmName || 'Unknown' };
+        _evaluateGPSRecord(cno, enriched);
+        importedCnos.add(String(cno));
+        queued++;
       });
 
-      try { localStorage.setItem('lpg_gps', JSON.stringify(STATE.consumerGPS)); } catch(e){}
       saveGpsApprovals();
       updateApprovalBadge();
       let cloudImportNote='';
-      if (DB._client && DB._online) {
-        const records=Object.entries(STATE.gpsApprovals).map(([consumer_no,g])=>({consumer_no,lat:Number(g.lat),lng:Number(g.lng),acc:Number(g.acc)||99,count:Number(g.count)||1,dm_name:g.dmName||data.dmName||'Imported file',consumer_name:g.consumerName||lookupConsumerName(consumer_no),area:g.area||'',captured_at:g.submittedAt||g.importedAt||new Date().toISOString()}));
+      if (DB._client && DB._online && importedCnos.size) {
+        const records=[...importedCnos].map(consumer_no=>{
+          const g=STATE.gpsApprovals[consumer_no];
+          return g ? {consumer_no,lat:Number(g.lat),lng:Number(g.lng),acc:Number(g.acc)||99,count:Number(g.count)||1,
+            dm_name:g.dmName||data.dmName||'Imported file',consumer_name:g.consumerName||lookupConsumerName(consumer_no),
+            area:g.area||'',captured_at:g.submittedAt||g.importedAt||new Date().toISOString()} : null;
+        }).filter(Boolean);
         if (records.length) {
-          try { const result=await gpsApi('import_batch',{records}); cloudImportNote=`\n☁️ ${result.imported||0} uploaded to GPS cloud`; if(result.skipped?.length) cloudImportNote+=` · ${result.skipped.length} skipped`; }
-          catch(err) { cloudImportNote='\n⚠️ Cloud import failed: '+err.message; }
+          try {
+            let imported=0, skipped=0;
+            for (let i=0;i<records.length;i+=500) {
+              const batch=records.slice(i,i+500);
+              const result=await gpsApi('import_batch',{records:batch});
+              imported += Number(result.imported)||0;
+              skipped += Array.isArray(result.skipped)?result.skipped.length:0;
+              (result.consumer_nos||[]).forEach(cno=>{if(STATE.gpsApprovals[cno]){STATE.gpsApprovals[cno].localOnly=false;STATE.gpsApprovals[cno].cloudSynced=true;}});
+            }
+            saveGpsApprovals();
+            cloudImportNote=`\n☁️ ${imported} uploaded to GPS cloud as pending review`+(skipped?` · ${skipped} skipped`:'');
+          } catch(err) { cloudImportNote='\n⚠️ Cloud import failed: '+err.message; }
         }
       }
-
-      const msg = [
-        autoApproved > 0 ? `✅ ${autoApproved} auto-approved (±${AUTO_APPROVE_ACCURACY}m threshold met)` : '',
-        queued > 0       ? `⏳ ${queued} queued for manual review (accuracy below ±${AUTO_APPROVE_ACCURACY}m)` : '',
-      ].filter(Boolean).join('\n');
-      alert((msg || 'No valid GPS data found in file.') + cloudImportNote);
-
+      alert((queued ? `⏳ ${queued} queued for manual office review. No record was auto-approved.` : 'No valid GPS data found in file.') + cloudImportNote);
       if (document.getElementById('tab-approvals').style.display !== 'none') initApprovalsTab();
     } catch(err) { alert('❌ Import failed: ' + err.message); }
+    finally { if (input) input.value=''; }
   };
   reader.readAsText(file);
 }
@@ -9189,6 +8951,8 @@ function lookupConsumerName(cno) {
 
 // ── INIT ──
 function initApprovalsTab() {
+  const importLabel=document.getElementById('gpsFileImportLabel');
+  if(importLabel) importLabel.style.display=AUTH?.role==='admin'?'':'none';
   renderApprovalStats();
   updateApprovalBadge();
   setApprovalView(_apprvView);
@@ -9224,6 +8988,10 @@ function renderApprovalStats() {
 
 // ── MAP VIEW ──
 function renderApprovalMap() {
+  if (!window.L) {
+    setApprovalView('table');    showToastMain('Map library unavailable. Showing GPS submissions in table view.');
+    return;
+  }
   setTimeout(() => {
     if (!_apprvMap) {
       _apprvMap = L.map('apprvMap').setView([20.9371, 78.5988], 13);
@@ -9242,10 +9010,11 @@ function renderApprovalMap() {
       });
       L.marker([sub.lat, sub.lng], { icon })
         .addTo(_apprvMap)
-        .bindPopup(`<b>${sub.consumerName||cno}</b><br>${sub.area||''}<br>
+        .bindPopup(`<b>${escHtml(sub.consumerName||cno)}</b><br>${escHtml(sub.area||'')}<br>
           📡 ${sub.count||1} readings · ±${Math.round(sub.acc||10)}m<br>
-          by ${sub.dmName||'—'}<br>
-          <button onclick="openApprovalDetail('${cno}')" style="margin-top:6px;padding:5px 12px;background:#f39c12;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">Review & Approve</button>`)
+          by ${escHtml(sub.dmName||'—')}<br>
+          <button data-review-gps="${escAttr(cno)}" data-review-approved="false" onclick="openApprovalDetail(this.dataset.reviewGps,false)" style="margin-top:6px;padding:5px 12px;background:#f39c12;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">Review & Approve</button>`)
+        .on('popupopen', e => { const b=e.popup.getElement()?.querySelector('[data-review-gps]'); if(b) b.addEventListener('click',()=>openApprovalDetail(b.dataset.reviewGps,false)); })
         .openPopup();
       bounds.push([sub.lat, sub.lng]);
     });
@@ -9261,8 +9030,9 @@ function renderApprovalMap() {
       const name = lookupConsumerName(cno) || cno;
       L.marker([g.lat, g.lng], { icon })
         .addTo(_apprvMap)
-        .bindPopup(`<b>✅ ${name}</b><br>±${Math.round(g.acc||3)}m · Approved<br>
-          <button onclick="openApprovalDetail('${cno}',true)" style="margin-top:5px;padding:4px 10px;background:#2ecc71;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:11px;">Edit / Re-approve</button>`);
+        .bindPopup(`<b>✅ ${escHtml(name)}</b><br>±${Math.round(g.acc||3)}m · Approved<br>
+          <button data-review-gps="${escAttr(cno)}" data-review-approved="true" onclick="openApprovalDetail(this.dataset.reviewGps,true)" style="margin-top:5px;padding:4px 10px;background:#2ecc71;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:11px;">Edit / Re-approve</button>`)
+        .on('popupopen', e => { const b=e.popup.getElement()?.querySelector('[data-review-gps]'); if(b) b.addEventListener('click',()=>openApprovalDetail(b.dataset.reviewGps,true)); });
       bounds.push([g.lat, g.lng]);
     });
 
@@ -9309,17 +9079,17 @@ function renderApprovalTable(filter) {
         ? `<span style="color:var(--orange);font-weight:700;">⏳ Pending</span>`
         : `<span style="color:var(--green);font-weight:700;">✅ Approved</span>`;
       const chk = isPending
-        ? `<input type="checkbox" data-cno="${r.cno}" onchange="toggleApprovalSel(this)" style="cursor:pointer;">`
+        ? `<input type="checkbox" data-cno="${escAttr(r.cno)}" onchange="toggleApprovalSel(this)" style="cursor:pointer;">`
         : `<span style="color:var(--green);font-size:14px;">✅</span>`;
       return `<tr style="border-bottom:1px solid var(--border);transition:background .1s;" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''">
         <td style="padding:9px 6px;text-align:center;">${chk}</td>
-        <td style="padding:9px 6px;font-weight:600;color:var(--text);">${r.consumerName||r.cno}<br><span style="font-size:10px;color:var(--text3);">${r.cno}</span></td>
-        <td style="padding:9px 6px;color:var(--text2);">${r.area||'—'}</td>
+        <td style="padding:9px 6px;font-weight:600;color:var(--text);">${escHtml(r.consumerName||r.cno)}<br><span style="font-size:10px;color:var(--text3);">${escHtml(r.cno)}</span></td>
+        <td style="padding:9px 6px;color:var(--text2);">${escHtml(r.area||'—')}</td>
         <td style="padding:9px 6px;text-align:center;color:var(--blue);">${r.count||1}</td>
         <td style="padding:9px 6px;text-align:center;color:${(r.acc||99)<=5?'var(--green)':(r.acc||99)<=15?'var(--orange)':'var(--red)'};">±${Math.round(r.acc||10)}m</td>
-        <td style="padding:9px 6px;">${statusHtml}${r.dmName?`<br><span style="font-size:10px;color:var(--text3);">${r.dmName}</span>`:''}</td>
+        <td style="padding:9px 6px;">${statusHtml}${r.dmName?`<br><span style="font-size:10px;color:var(--text3);">${escHtml(r.dmName)}</span>`:''}</td>
         <td style="padding:9px 6px;text-align:center;">
-          <button onclick="openApprovalDetail('${r.cno}',${!isPending})" style="padding:5px 12px;border-radius:6px;border:none;font-size:11px;font-weight:700;cursor:pointer;background:${isPending?'var(--orange)':'var(--surface)'};color:${isPending?'#fff':'var(--text2)'};border:1px solid var(--border);">
+          <button data-approval-cno="${escAttr(r.cno)}" data-approval-status="${!isPending}" onclick="openApprovalDetail(this.dataset.approvalCno,this.dataset.approvalStatus==='true')" style="padding:5px 12px;border-radius:6px;border:none;font-size:11px;font-weight:700;cursor:pointer;background:${isPending?'var(--orange)':'var(--surface)'};color:${isPending?'#fff':'var(--text2)'};border:1px solid var(--border);">
             ${isPending?'Review':'Edit'}
           </button>
         </td>
@@ -9371,6 +9141,10 @@ async function approveSelected() {
 // ── DETAIL MODAL ──
 function openApprovalDetail(cno, isApproved) {
   _adCurrentCno = cno;
+  const rejectBtn=document.getElementById('rejectGpsBtn');
+  if(rejectBtn) rejectBtn.style.display=AUTH?.role==='admin'?'':'none';
+  const importLabel=document.getElementById('gpsFileImportLabel');
+  if(importLabel) importLabel.style.display=AUTH?.role==='admin'?'':'none';
   const sub = STATE.gpsApprovals[cno] || STATE.consumerGPS[cno];
   if (!sub) return;
 
@@ -9410,36 +9184,42 @@ function closeApprovalDetail() {
 }
 
 async function _doApprove(lat, lng, acc) {
-  const cno=_adCurrentCno; if(!cno) return;
+  const cno=_adCurrentCno;
+  if(!cno || !AUTH?.token || !['admin','staff'].includes(AUTH.role)) {
+    showToast2('Office admin/staff login is required to approve GPS.');
+    return false;
+  }
   const sub=STATE.gpsApprovals[cno]||STATE.consumerGPS[cno]||{};
-  try { await gpsApi('approve',{consumer_no:cno,lat,lng,acc:acc||5,raw_lat:sub.rawLat??sub.raw_lat??sub.lat,raw_lng:sub.rawLng??sub.raw_lng??sub.lng,capture_mode:'office_approved_entrance_pin'}); }
-  catch(e) { showToast2('❌ Approval failed: '+e.message); return; }
+  try {
+    await gpsApi('approve',{consumer_no:cno,lat,lng,acc:acc||5,raw_lat:sub.rawLat??sub.raw_lat??sub.lat,raw_lng:sub.rawLng??sub.raw_lng??sub.lng,capture_mode:'office_approved_entrance_pin'});
+  } catch(e) { showToast2('❌ Approval failed: '+e.message); return false; }
   const now=new Date().toISOString();
   STATE.consumerGPS[cno]={lat,lng,acc:acc||5,capturedAt:now,status:'approved',source:'approved',count:STATE.gpsApprovals[cno]?.count||1};
   delete STATE.gpsApprovals[cno];
   try { localStorage.setItem('lpg_gps',JSON.stringify(STATE.consumerGPS)); } catch(e){}
   saveGpsApprovals(); updateApprovalBadge(); closeApprovalDetail(); renderApprovalStats();
   if(_apprvView==='map') renderApprovalMap(); else renderApprovalTable();
+  return true;
 }
 
-function approveDetailPin() {
-  // Approve at submitted coords (original averaged position)
+async function approveDetailPin() {
   const sub = STATE.gpsApprovals[_adCurrentCno] || STATE.consumerGPS[_adCurrentCno];
-  _doApprove(sub.lat, sub.lng, sub.acc||5);
-  showToast2('✅ Approved!');
+  if (!sub) return;
+  const ok = await _doApprove(sub.lat, sub.lng, sub.acc||5);
+  if (ok) showToast2('✅ Approved!');
 }
 
-function approveDetailPinCorrected() {
-  // Approve at dragged corrected position without inventing a better GPS accuracy.
+async function approveDetailPinCorrected() {
   if (!_adMarker) return;
   const sub=STATE.gpsApprovals[_adCurrentCno]||STATE.consumerGPS[_adCurrentCno]||{};
   const ll = _adMarker.getLatLng();
-  _doApprove(ll.lat, ll.lng, sub.acc||5);
-  showToast2('📍 Approved with correction!');
+  const ok = await _doApprove(ll.lat, ll.lng, sub.acc||5);
+  if (ok) showToast2('📍 Approved with correction!');
 }
 
 async function rejectApproval() {
-  if (!confirm('Reject this location? The delivery man will need to re-capture.')) return;
+  if (AUTH?.role !== 'admin' || !AUTH?.token) { showToast2('Admin permission is required to reject GPS records.'); return false; }
+  if (!confirm('Reject this location? The delivery man will need to re-capture.')) return false;
   try { await gpsApi('reject',{consumer_no:_adCurrentCno}); } catch(e) { showToast2('❌ Reject failed: '+e.message); return; }
   delete STATE.gpsApprovals[_adCurrentCno];
   saveGpsApprovals();
@@ -9488,7 +9268,7 @@ function installDeliveryReportUI(){
  const nav=document.querySelector('.sidebar');
  const main=document.querySelector('.content');
  if(!nav||!main||document.getElementById('tab-delivery-report'))return;
- const item=document.createElement('div');item.className='sidebar-item';item.innerHTML='<span class="icon">📈</span> Delivery Reports';item.onclick=()=>showTab('delivery-report');nav.appendChild(item);
+ const item=document.createElement('div');item.className='sidebar-item';item.dataset.tabName='delivery-report';item.innerHTML='<span class="icon">📈</span> Delivery Reports';item.onclick=()=>showTab('delivery-report');nav.appendChild(item);
  const panel=document.createElement('div');panel.id='tab-delivery-report';panel.className='tab-panel';
  panel.innerHTML=`<div class="section-header" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:14px"><div><div class="section-title">📈 Date-wise Delivery Summary</div><div style="font-size:11px;color:var(--text2)">Read-only production API report</div></div><span class="header-badge">READ ONLY</span></div>
  <div class="config-panel"><div class="config-title">Production API connection</div><div class="config-desc">Enter the Supabase publishable/anon key only. Never use a service-role key in a browser.</div><div class="config-row"><label class="config-label">Publishable / anon key</label><input class="config-input" id="drKey" type="password" placeholder="Paste publishable key"></div><div class="config-row"><label class="config-label">Admin PIN</label><input class="config-input" id="drPin" type="password" inputmode="numeric" maxlength="8" placeholder="4–8 digit admin PIN" style="max-width:220px"></div><button class="btn btn-primary" id="drConnect">Connect securely</button> <span id="drStatus" style="font-size:11px;color:var(--text2)">Not connected</span><div style="font-size:11px;color:var(--text3);margin-top:8px">Publishable key is remembered in this browser. PIN is cleared after login; session token stays in page memory only and you must sign in again after reloading.</div></div>
@@ -9497,12 +9277,22 @@ function installDeliveryReportUI(){
  <div class="table-wrap"><div class="table-scroll" style="max-height:60vh"><table><thead><tr><th>Delivery Date</th><th>Delivery Person</th><th>Records</th><th>Cylinders</th><th>OTP/DAC Records</th><th>OTP/DAC Cylinders</th><th>CDCMS Records</th><th>CDCMS Cylinders</th></tr></thead><tbody id="drBody"><tr><td colspan="8">Connect the API, choose a date range, then load the report.</td></tr></tbody></table></div></div><div id="drTotals" style="font-size:11px;color:var(--text2);padding:10px 2px"></div>`;
  main.appendChild(panel);
  const n=new Date(),f=new Date(n.getFullYear(),n.getMonth(),1);document.getElementById('drFrom').value=drDate(f);document.getElementById('drTo').value=drDate(n);
- const keyInput=document.getElementById('drKey');try{keyInput.value=localStorage.getItem(DR_KEY_STORAGE)||'';}catch(e){}
- keyInput.addEventListener('change',()=>{try{const k=keyInput.value.trim();if(k)localStorage.setItem(DR_KEY_STORAGE,k);else localStorage.removeItem(DR_KEY_STORAGE);}catch(e){}});
+ const keyInput=document.getElementById('drKey');try{keyInput.value=localStorage.getItem('sb_key')||localStorage.getItem(DR_KEY_STORAGE)||'';}catch(e){}
+ keyInput.addEventListener('change',()=>{try{const k=keyInput.value.trim();if(k){localStorage.setItem(DR_KEY_STORAGE,k);localStorage.setItem('sb_key',k);}else{localStorage.removeItem(DR_KEY_STORAGE);}}catch(e){}});
  document.getElementById('drConnect').onclick=drConnect;document.getElementById('drLoad').onclick=drLoad;document.getElementById('drExport').onclick=drExport;document.getElementById('drPerson').onchange=drRender;
 }
 async function drPost(body,token=true){const h={'Content-Type':'application/json','apikey':drKey,'Authorization':'Bearer '+drKey};if(token&&drToken)h['x-session-token']=drToken;const r=await fetch(DELIVERY_REPORT_API,{method:'POST',headers:h,body:JSON.stringify(body)});let d;try{d=await r.json()}catch(e){throw Error('Non-JSON response, HTTP '+r.status)}if(!r.ok||d.error)throw Error(d.error||'HTTP '+r.status);return d;}
-async function drConnect(){const st=document.getElementById('drStatus'),pin=document.getElementById('drPin').value.trim();drKey=document.getElementById('drKey').value.trim();try{if(drKey)localStorage.setItem(DR_KEY_STORAGE,drKey);}catch(e){}if(!drKey||!/^\d{4,8}$/.test(pin)){st.textContent='Enter publishable key and 4–8 digit admin PIN';return;}st.textContent='Connecting…';try{const d=await drPost({action:'login',name:'admin',pin},false);drToken=d.token||d.session_token||d.data?.token||'';if(!drToken)throw Error('No session token returned by login');document.getElementById('drPin').value='';st.textContent='Connected as admin';st.style.color='var(--green)';}catch(e){drToken='';st.textContent='Connection failed: '+e.message;st.style.color='var(--red)';}}
+async function drConnect(){
+ const st=document.getElementById('drStatus'),pin=document.getElementById('drPin').value.trim();
+ drKey=document.getElementById('drKey').value.trim()||localStorage.getItem('sb_key')||'';
+ try{if(drKey){localStorage.setItem(DR_KEY_STORAGE,drKey);localStorage.setItem('sb_key',drKey);}}catch(e){}
+ if(!drKey||!isAllowedClientKey(drKey)){st.textContent='Enter a valid public key for the NEW Samruddhi Supabase project';st.style.color='var(--red)';return;}
+ if(AUTH?.role==='admin'&&AUTH?.token){drToken=AUTH.token;st.textContent='Connected using your Dashboard admin session';st.style.color='var(--green)';document.getElementById('drPin').value='';return;}
+ if(!/^\d{4,8}$/.test(pin)){st.textContent='Sign in as admin in the Dashboard, or enter the 4–8 digit admin PIN';st.style.color='var(--yellow)';return;}
+ st.textContent='Connecting…';
+ try{const d=await drPost({action:'login',name:'admin',pin},false);drToken=d.token||d.session_token||d.data?.token||'';if(!drToken)throw Error('No session token returned by login');document.getElementById('drPin').value='';st.textContent='Connected as admin';st.style.color='var(--green)';}
+ catch(e){drToken='';st.textContent='Connection failed: '+e.message;st.style.color='var(--red)';}
+}
 async function drLoad(){const st=document.getElementById('drStatus'),from=document.getElementById('drFrom').value,to=document.getElementById('drTo').value;if(!drToken){st.textContent='Connect to API first';return;}if(!from||!to||from>to){st.textContent='Choose a valid date range';return;}document.getElementById('drBody').innerHTML='<tr><td colspan="8">Loading…</td></tr>';try{const d=await drPost({action:'db',table:'lpg_delivered',op:'date_wise_delivery_summary',start_date:from,end_date:to});drRows=Array.isArray(d.data)?d.data:(Array.isArray(d.data?.data)?d.data.data:[]);const people=[...new Set(drRows.map(r=>String(r.delivery_man||'UNASSIGNED').trim().toUpperCase()))].sort(),sel=document.getElementById('drPerson'),old=sel.value;sel.innerHTML='<option value="">All delivery persons</option>'+people.map(p=>'<option>'+drEsc(p)+'</option>').join('');sel.value=people.includes(old)?old:'';drRender();st.textContent='Loaded '+drRows.length+' grouped rows';st.style.color='var(--green)';}catch(e){document.getElementById('drBody').innerHTML='<tr><td colspan="8" style="color:var(--red)">Failed: '+drEsc(e.message)+'</td></tr>';st.textContent='Request failed';st.style.color='var(--red)';}}
 function drRender(){const person=document.getElementById('drPerson').value,rows=drRows.filter(r=>!person||String(r.delivery_man||'UNASSIGNED').trim().toUpperCase()===person),ks=['total_records','total_cylinders','otp_dac_records','otp_dac_cylinders','cdcms_records','cdcms_cylinders'],sum=Object.fromEntries(ks.map(k=>[k,rows.reduce((a,r)=>a+Number(r[k]||0),0)]));[['drRecords','total_records'],['drCylinders','total_cylinders'],['drOtp','otp_dac_cylinders'],['drCdcms','cdcms_cylinders']].forEach(([id,k])=>document.getElementById(id).textContent=sum[k].toLocaleString('en-IN'));rows.sort((a,b)=>String(a.delivery_date).localeCompare(String(b.delivery_date))||String(a.delivery_man).localeCompare(String(b.delivery_man)));document.getElementById('drBody').innerHTML=rows.length?rows.map(r=>'<tr><td>'+drEsc(r.delivery_date)+'</td><td>'+drEsc(String(r.delivery_man||'UNASSIGNED').toUpperCase())+'</td><td>'+Number(r.total_records||0)+'</td><td><b>'+Number(r.total_cylinders||0)+'</b></td><td>'+Number(r.otp_dac_records||0)+'</td><td>'+Number(r.otp_dac_cylinders||0)+'</td><td>'+Number(r.cdcms_records||0)+'</td><td>'+Number(r.cdcms_cylinders||0)+'</td></tr>').join(''):'<tr><td colspan="8">No rows for this filter.</td></tr>';document.getElementById('drTotals').textContent='Filtered totals: '+sum.total_records+' records · '+sum.total_cylinders+' cylinders · OTP/DAC '+sum.otp_dac_cylinders+' cylinders · CDCMS '+sum.cdcms_cylinders+' cylinders. Source records are not modified.';}
 function drExport(){const person=document.getElementById('drPerson').value,rows=drRows.filter(r=>!person||String(r.delivery_man||'UNASSIGNED').trim().toUpperCase()===person);if(!rows.length){alert('Load a report first.');return;}const ks=['delivery_date','delivery_man','total_records','total_cylinders','otp_dac_records','otp_dac_cylinders','cdcms_records','cdcms_cylinders'],csv=[ks.join(','),...rows.map(r=>ks.map(k=>'"'+String(r[k]??'').replace(/"/g,'""')+'"').join(','))].join('\r\n'),blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='Samruddhi_Delivery_Summary.csv';a.click();URL.revokeObjectURL(a.href);}
@@ -9535,10 +9325,10 @@ setTimeout(installDeliveryReportUI,1000);
 <div id="gpsLinkModal"><div class="panel"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Consumer GPS Link Campaign</h2><button class="secondary" onclick="closeGpsLinkCampaign()">Close</button></div><p style="font-size:13px;color:var(--text2)">Select consumers individually or by delivery area. Each consumer receives a unique, single-use link that expires in 7 days. Links are generated in batches of 500.</p><label>Delivery Area</label><select id="gpsArea" onchange="renderGpsCampaignConsumers()"><option value="">All areas</option></select><label>Search consumer (number / name / mobile)</label><input id="gpsSearch" placeholder="Search…" oninput="renderGpsCampaignConsumers()"><div style="display:flex;gap:8px;flex-wrap:wrap"><button onclick="selectGpsVisible(true)">Select visible</button><button class="secondary" onclick="selectGpsVisible(false)">Clear visible</button></div><div id="gpsConsumerChoices" style="max-height:250px;overflow:auto;border:1px solid #ddd;border-radius:10px;padding:8px;margin:10px 0"></div><div id="gpsSelectedCount" style="font-weight:800">0 selected</div><button id="gpsGenerateBtn" onclick="generateGpsCampaignLinks()">Generate WhatsApp Links</button><div id="gpsCampaignResult" class="result" style="display:none"></div></div></div>
 <script>
 let _gpsCampaignSelected=new Set(),_gpsCampaignLinks=[];
-async function openGpsLinkCampaign(){if(!AUTH||!AUTH.token||!['admin','staff'].includes(AUTH.role)){alert('Office login required');return}document.getElementById('gpsLinkModal').style.display='block';if(DB._client&&DB._online)await DB.syncGPS();const areas=[...new Set((STATE.masters||[]).map(x=>String(x.area||'').trim()).filter(Boolean))].sort();document.getElementById('gpsArea').innerHTML='<option value="">All areas</option>'+areas.map(a=>'<option>'+escHtml(a)+'</option>').join('');renderGpsCampaignConsumers()}
+async function openGpsLinkCampaign(){if(!AUTH||!AUTH.token||!['admin','staff'].includes(AUTH.role)){alert('Office login required');return}document.getElementById('gpsLinkModal').style.display='block';if(DB._client&&DB._online)await DB.syncGPS();const areas=[...new Set((STATE.masters||[]).map(x=>String(x.area||'').trim()).filter(Boolean))].sort();const areaSel=document.getElementById('gpsArea');areaSel.replaceChildren(new Option('All areas',''));areas.forEach(a=>areaSel.add(new Option(a,a)));renderGpsCampaignConsumers()}
 function closeGpsLinkCampaign(){document.getElementById('gpsLinkModal').style.display='none'}
 function gpsCampaignRows(){const area=document.getElementById('gpsArea').value,q=document.getElementById('gpsSearch').value.trim().toLowerCase();return (STATE.masters||[]).filter(x=>{const c=String(x.consumerNo||'').trim(),m=String(x.mobile||'').replace(/\D/g,'');const g=STATE.consumerGPS?.[c];const approved=!!g&&(g.status==='approved'||g.source==='approved'||g.source==='staff_pin');return c&&!approved&&String(x.status||'').toLowerCase()!=='inactive'&&m.length>=10&&(!area||String(x.area||'').trim()===area)&&(!q||[c,x.consumerName,x.mobile,x.area,x.address].join(' ').toLowerCase().includes(q))})}
-function renderGpsCampaignConsumers(){const rows=gpsCampaignRows();document.getElementById('gpsConsumerChoices').innerHTML=rows.slice(0,5000).map(x=>{const c=String(x.consumerNo);return `<label style="display:flex;gap:8px;padding:7px;border-bottom:1px solid #eee;font-size:13px"><input type="checkbox" style="width:auto;margin:2px" ${_gpsCampaignSelected.has(c)?'checked':''} onchange="toggleGpsConsumer('${escAttr(c)}',this.checked)"><span><b>${escHtml(c)}</b> · ${escHtml(x.consumerName||'')}<br><span style="color:#777">${escHtml(x.area||'')} · ${escHtml(x.mobile||'')}</span></span></label>`}).join('')||'<p>No consumers with valid mobile number in this selection.</p>';document.getElementById('gpsSelectedCount').textContent=_gpsCampaignSelected.size+' selected'}
+function renderGpsCampaignConsumers(){const rows=gpsCampaignRows(),host=document.getElementById('gpsConsumerChoices');host.innerHTML=rows.slice(0,5000).map(x=>{const c=String(x.consumerNo);return `<label style="display:flex;gap:8px;padding:7px;border-bottom:1px solid #eee;font-size:13px"><input type="checkbox" data-gps-consumer="${escAttr(c)}" style="width:auto;margin:2px" ${_gpsCampaignSelected.has(c)?'checked':''}><span><b>${escHtml(c)}</b> · ${escHtml(x.consumerName||'')}<br><span style="color:#777">${escHtml(x.area||'')} · ${escHtml(x.mobile||'')}</span></span></label>`}).join('')||'<p>No consumers with valid mobile number in this selection.</p>';host.querySelectorAll('[data-gps-consumer]').forEach(cb=>cb.addEventListener('change',()=>toggleGpsConsumer(cb.dataset.gpsConsumer,cb.checked)));document.getElementById('gpsSelectedCount').textContent=_gpsCampaignSelected.size+' selected'}
 function toggleGpsConsumer(c,v){if(v)_gpsCampaignSelected.add(c);else _gpsCampaignSelected.delete(c);document.getElementById('gpsSelectedCount').textContent=_gpsCampaignSelected.size+' selected'}
 function selectGpsVisible(v){gpsCampaignRows().forEach(x=>{const c=String(x.consumerNo);if(v)_gpsCampaignSelected.add(c);else _gpsCampaignSelected.delete(c)});renderGpsCampaignConsumers()}
 async function generateGpsCampaignLinks(){
