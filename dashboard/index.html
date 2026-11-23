@@ -3402,11 +3402,11 @@ function _renderFiltersBar(store, barId, chipsId, removeOnclick, searchV, clearS
     ...activeFields.map(f => {
       const vals = [...store[f]];
       const disp = vals.length <= 2 ? vals.join(', ') : vals.length + ' selected';
-      return `<span class="active-filter-chip">${fieldLabel(f)}: ${disp} <span class="chip-remove" onclick="${removeOnclick(f)}">✕</span></span>`;
+      return `<span class="active-filter-chip">${escHtml(fieldLabel(f))}: ${escHtml(disp)} <span class="chip-remove" onclick="${removeOnclick(f)}">✕</span></span>`;
     }),
     (cylMin||cylMax) ? `<span class="active-filter-chip">Cyls: ${cylMin||'0'}–${cylMax||'∞'} <span class="chip-remove" onclick="${clearCylFn}">✕</span></span>` : '',
     searchV ? `<span class="active-filter-chip">Search: "${escHtml(searchV)}" <span class="chip-remove" onclick="${clearSearchFn}">✕</span></span>` : '',
-    callV   ? `<span class="active-filter-chip">Call: ${callV} <span class="chip-remove" onclick="${clearCallFn}">✕</span></span>` : '',
+    callV   ? `<span class="active-filter-chip">Call: ${escHtml(callV)} <span class="chip-remove" onclick="${clearCallFn}">✕</span></span>` : '',
   ].join('');
 }
 
