@@ -1,7 +1,11 @@
-# Samruddhi DeliveryApp static release
+# Samruddhi DeliveryApp — public static PWA
 
-This folder is the public, static PWA build served from the existing GitHub Pages site. The main working source and backend code are maintained in the private repository `samruddhigas/SAMRUDDHI-DELIVERY-APP`.
+Live URL: https://samruddhigas.github.io/locate/deliveryapp/
 
-App URL: https://samruddhigas.github.io/locate/deliveryapp/
+This folder holds only the public frontend assets for the installable delivery app. The working source and backend implementation are maintained in the private repository `samruddhigas/SAMRUDDHI-DELIVERY-APP`.
 
-Only public frontend assets are stored here. The Supabase publishable key is intended for browser use; no service-role key, database password, delivery PIN, or user session token is stored in this folder. User authentication, role enforcement, assigned-booking filtering, and GPS authorization are handled by the Supabase Edge Function.
+The existing LocationCapture page at the repository root has not been changed.
+
+The frontend has no service-role key, database password, delivery PIN or saved user session. Delivery login, session validation, role checks and assigned-booking filtering are enforced by the Supabase `lpg-api` backend.
+
+Important: the app's “Mark delivered (local only)” action is local phone progress, not an official HPCL delivery record. Official delivery confirmation remains in the HPCL workflow.
