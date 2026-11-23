@@ -8572,7 +8572,7 @@ async function buildRouteOptimizer() {
              noCoords: Object.values(areaMap).filter(s => !s.coords).map(s => s.area) };
   }).sort((a,b) => b.totalOrders - a.totalOrders);
 
-  statusEl.textContent = `✅ Area-level route estimates prepared for ${_routeData.length} delivery men. This is not an office-approved customer stop sequence.`;
+  statusEl.textContent = `✅ Area-level route estimates prepared for ${_routeData.length} delivery men. This is not road navigation or an office-approved customer stop sequence.`;
   renderRouteMap(depot);
   renderRouteSummaryCards();
   renderRouteTables();
