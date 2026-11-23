@@ -98,7 +98,7 @@ except Exception as exc:
 
 # Also validate the dashboard's generated DeliveryApp HTML template.
 dashboard_source = PAGES[0].read_text(encoding="utf-8")
-template_marker = "const DELIVERY_APP_HTML = \`"
+template_marker = "const DELIVERY_APP_HTML = `"
 template_start = dashboard_source.find(template_marker)
 if template_start < 0:
     failures.append("Could not locate DELIVERY_APP_HTML template in dashboard")
@@ -132,7 +132,7 @@ else:
         if active_interpolations:
             failures.append("DELIVERY_APP_HTML has active template interpolation; validator extraction must be updated safely")
         else:
-            node_template = "const generated = \`" + raw_template + "\`; process.stdout.write(generated);"
+            node_template = "const generated = `" + raw_template + "`; process.stdout.write(generated);"
             generated_result = subprocess.run(["node", "-e", node_template], capture_output=True, text=True)
             if generated_result.returncode:
                 failures.append("Could not decode DELIVERY_APP_HTML template: " + generated_result.stderr.strip())
