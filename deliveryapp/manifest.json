@@ -1,0 +1,10 @@
+{
+  "name":"Samruddhi LPG DeliveryApp",
+  "short_name":"DeliveryApp",
+  "start_url":"./index.html",
+  "display":"standalone",
+  "background_color":"#f2f6f4",
+  "theme_color":"#0e6b55",
+  "description":"Assigned LPG deliveries for Samruddhi Gas Agency",
+  "icons":[{"src":"./icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}
