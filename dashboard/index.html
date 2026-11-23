@@ -4723,7 +4723,7 @@ function populatePackageDropdown(){
     else if (p.includes('NON-SUBSIDIZED')) label = '14.2 KG Non-Subsidized';
     else if (p.includes('SUBSIDIZED') || p.includes('SUBSIDY')) label = '14.2 KG Subsidized';
     else if (p.length > 35) label = p.substring(0, 35) + '…';
-    sel.innerHTML += \`<option value="\${escAttr(p)}" title="\${escAttr(p)}">\${escHtml(label)}</option>\`;
+    sel.innerHTML += `<option value="${escAttr(p)}" title="${escAttr(p)}">${escHtml(label)}</option>`;
   });
   // Restore selection if still valid
   if (current && [...sel.options].some(o => o.value === current)) sel.value = current;
@@ -5188,7 +5188,7 @@ function showHistory(consumerNo){
   setText('modalTitle',r.consumerName||'Consumer '+cno);
   const hasDel=deliveries.length>0;
   document.getElementById('modalSubtitle').innerHTML=
-    \`No: \${escHtml(cno)} | \${escHtml(r.area||'')} | \${escHtml(r.mobile||'')} \`+
+    `No: ${escHtml(cno)} | ${escHtml(r.area||'')} | ${escHtml(r.mobile||'')} `+
     (hasDel?'<span style="background:rgba(63,185,80,.15);color:var(--green);font-size:10px;padding:1px 6px;border-radius:8px">✓ Info from latest delivery</span>':'<span style="background:rgba(139,148,158,.12);color:var(--text3);font-size:10px;padding:1px 6px;border-radius:8px">Masters only</span>');
   setText('modalCylCount',currentFYQty+' cyls this FY · '+totalQty+' total all FY');
   const mobileDigits=String(r.mobile||'').replace(/\D/g,'');
@@ -8195,7 +8195,7 @@ function renderDMTable() {
     const pendPct = Math.round((r.pendCount / maxPend) * 100);
     const avgCls  = r.avgPerDay >= 20 ? 'color:var(--green)' : r.avgPerDay >= 10 ? 'color:var(--yellow)' : 'color:var(--text2)';
     return `<tr>
-      <td style="font-weight:600">\${escHtml(r.name)}</td>
+      <td style="font-weight:600">${escHtml(r.name)}</td>
       <td style="text-align:right">
         <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
           <div style="width:60px;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
