@@ -8711,7 +8711,7 @@ DB.syncGPS = async function() {
     const data = Array.isArray(result.data) ? result.data : [];
     let autoApproved=0, queued=0;
     const now = new Date().toISOString();
-    const localOnly = Object.fromEntries(Object.entries(STATE.gpsApprovals||{}).filter(([,r])=>r && r.localOnly===true));
+    const localOnly = Object.fromEntries(Object.entries(STATE.gpsApprovals||{}).filter(([,r])=>r && (r.localOnly===true || (r.legacyImport===true && r.cloudSynced!==true))));
     const approvedNext={}, pendingNext={};
     data.forEach(r => {
       const cno=String(r.consumer_no||'').trim(); if(!cno) return;
@@ -8724,7 +8724,7 @@ DB.syncGPS = async function() {
       } else { pendingNext[cno]={...rec,submittedAt:rec.capturedAt,importedAt:now}; queued++; }
     });
     // Cloud is authoritative for all previously-synced GPS entries. Keep only
-    // explicitly tagged local-only imports that failed to upload, so a later
+    // explicitly tagged local-only or older unverified legacy imports that may not have uploaded, so a later
     // cloud sync cannot silently resurrect a rejected/deleted location locally.
     Object.entries(localOnly).forEach(([cno,rec])=>{
       if(!approvedNext[cno]&&!pendingNext[cno]) pendingNext[cno]=rec;
