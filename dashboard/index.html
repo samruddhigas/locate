@@ -8323,7 +8323,7 @@ function initRouteTab() {
   const sel = document.getElementById('routeDMSelect');
   if (!sel) return;
   sel.innerHTML = '<option value="">— All (overview map) —</option>' +
-    dms.map(d => `<option value="${escAttr(d)}">${d}</option>`).join('');
+    dms.map(d => `<option value="${escAttr(d)}">${escHtml(d)}</option>`).join('');
 
   // Load centrally stored saved locations
   loadCentralLocations();
@@ -8336,7 +8336,7 @@ function _restoreDepotDisplay() {
   try {
     const d = JSON.parse(saved);
     const el = document.getElementById('depotDisplay');
-    if (el) el.innerHTML = `<span style="color:var(--green)">📍 ${d.label || (d.lat.toFixed(5)+', '+d.lng.toFixed(5))}</span>`;
+    if (el) el.innerHTML = `<span style="color:var(--green)">📍 ${escHtml(d.label || (d.lat.toFixed(5)+', '+d.lng.toFixed(5)))}</span>`;
   } catch(e) {}
 }
 
