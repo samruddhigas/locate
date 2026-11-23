@@ -6148,7 +6148,7 @@ function renderCurrentStop() {
       <div class="current-info">
         <div class="current-name">\${esc(d.consumerName)}</div>
         <div class="current-address">\${esc(d.address || d.area || '—')}</div>
-        \${d.mobile ? \`<div class="current-mobile" onclick="callNum('\${esc(d.mobile)}')"\${esc(d.mobile)}</div>\` : ''}
+        \${d.mobile ? \`<div class="current-mobile" onclick="callNum('\${esc(d.mobile)}')">📞 \${esc(d.mobile)}</div>\` : ''}
       </div>
     </div>
     <div class="current-badges">
