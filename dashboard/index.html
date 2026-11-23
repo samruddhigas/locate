@@ -5982,7 +5982,7 @@ function buildSetup() {
 
   const dms = [...new Set(d.deliveries.map(x => x.deliveryMan).filter(Boolean))].sort();
   grid.innerHTML = dms.map(n =>
-    \`<button class="dm-btn" onclick="selDM('\${esc(n)}')">\${n}</button>\`
+    \`<button class="dm-btn" onclick="selDM('\${esc(n)}')">\${esc(n)}</button>\`
   ).join('');
 
   info.className = 'setup-info ok';
