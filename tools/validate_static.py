@@ -168,6 +168,12 @@ else:
                                 failures.append(f"Generated DeliveryApp inline script {i} syntax error: {result.stderr.strip()}")
                     print(f"Generated DeliveryApp template: checked {len(generated_parser.ids)} IDs and {len(generated_parser.scripts)} inline scripts.")
 
+route_test = subprocess.run(["node", str(ROOT / "tools" / "test_route_optimizer.js")], capture_output=True, text=True)
+if route_test.returncode:
+    failures.append("Route optimizer tests failed: " + route_test.stderr.strip())
+else:
+    print(route_test.stdout.strip())
+
 print(f"Checked {checked_pages} HTML pages and {checked_scripts} inline scripts.")
 if failures:
     print("\n".join(f"FAIL: {x}" for x in failures))
