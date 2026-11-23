@@ -8468,6 +8468,29 @@ function haversine(a, b) {
 }
 
 // Nearest-neighbour TSP approximation
+function twoOptImprove(depot, route) {
+  if (route.length < 3) return route;
+  let improved = true, passes = 0;
+  while (improved && passes < 25) {
+    improved = false;
+    passes++;
+    for (let i = 0; i < route.length - 1; i++) {
+      for (let k = i + 1; k < route.length; k++) {
+        const prev = i === 0 ? depot : route[i - 1];
+        const next = k === route.length - 1 ? depot : route[k + 1];
+        const before = haversine(prev, route[i]) + haversine(route[k], next);
+        const after = haversine(prev, route[k]) + haversine(route[i], next);
+        if (after + 1e-6 < before) {
+          route = route.slice(0, i).concat(route.slice(i, k + 1).reverse(), route.slice(k + 1));
+          improved = true;
+          break;
+        }
+      }
+      if (improved) break;
+    }
+  }
+  return route;
+}
 function optimizeRoute(depot, stops) {
   if (!stops.length) return [];
   const remaining = [...stops];
@@ -8479,14 +8502,18 @@ function optimizeRoute(depot, stops) {
       const d = haversine(current, s);
       if (d < nearestDist) { nearestDist = d; nearestIdx = i; }
     });
-    route.push({ ...remaining[nearestIdx], distFromPrev: nearestDist });
+    route.push(remaining[nearestIdx]);
     current = remaining[nearestIdx];
     remaining.splice(nearestIdx, 1);
   }
-  return route;
+  const improved = twoOptImprove(depot, route);
+  let prev = depot;
+  return improved.map(s => {
+    const dist = haversine(prev, s);
+    prev = s;
+    return { ...s, distFromPrev: dist };
+  });
 }
-
-// Total route distance
 function totalDist(depot, route) {
   if (!route.length) return 0;
   let d = haversine(depot, route[0]);
