@@ -761,18 +761,18 @@ Deno.serve(async (req) => {
       const gpsLat = Number(gps?.pin_lat ?? gps?.lat);
       const gpsLng = Number(gps?.pin_lng ?? gps?.lng);
       const gpsAccuracy = Number(gps?.acc);
-      if (!gps || !Number.isFinite(gpsLat) || gpsLat < -90 || gpsLat > 90 ||
-          !Number.isFinite(gpsLng) || gpsLng < -180 || gpsLng > 180 ||
-          !Number.isFinite(gpsAccuracy) || gpsAccuracy < 0 || gpsAccuracy > 5 || !gps.captured_at) {
-        return Response.json({ error: "GPS must be successfully saved on the server before this delivery can be completed." }, { status: 409, headers: cors });
-      }
+      const hasUsableGps = !!gps && Number.isFinite(gpsLat) && gpsLat >= -90 && gpsLat <= 90 &&
+        Number.isFinite(gpsLng) && gpsLng >= -180 && gpsLng <= 180 &&
+        Number.isFinite(gpsAccuracy) && gpsAccuracy >= 0 && gpsAccuracy <= 30 && !!gps.captured_at;
 
       const record = {
         booking_key: bookingKey, consumer_no: consumerNo,
         order_no: assigned.order_no || null, pending_id: assigned.id,
         delivery_man: user.name, qty: Math.max(1, Number(assigned.qty) || 1),
-        completed_at: completedAt.toISOString(), gps_captured_at: gps.captured_at,
-        gps_lat: gpsLat, gps_lng: gpsLng, gps_accuracy: gpsAccuracy,
+        completed_at: completedAt.toISOString(), gps_captured_at: hasUsableGps ? gps.captured_at : null,
+        gps_lat: hasUsableGps ? gpsLat : null, gps_lng: hasUsableGps ? gpsLng : null,
+        gps_accuracy: hasUsableGps ? gpsAccuracy : null,
+        gps_status: hasUsableGps ? "captured_pending_office_review" : "not_captured",
         source: "deliveryapp"
       };
       const { data, error } = await db.from("lpg_delivery_completions")
@@ -932,34 +932,32 @@ Deno.serve(async (req) => {
       const acc = Number(body.acc ?? 0);
       if (!consumerNo || consumerNo.length > 40 || !Number.isFinite(lat) || lat < -90 || lat > 90 ||
           !Number.isFinite(lng) || lng < -180 || lng > 180 || !Number.isFinite(rawLat) || rawLat < -90 || rawLat > 90 ||
-          !Number.isFinite(rawLng) || rawLng < -180 || rawLng > 180 || !Number.isFinite(acc) || acc < 0 || acc > 5) {
-        return Response.json({ error: "Invalid GPS capture values: valid coordinates and reported accuracy within 5 metres are required" }, { status: 400, headers: cors });
+          !Number.isFinite(rawLng) || rawLng < -180 || rawLng > 180 || !Number.isFinite(acc) || acc < 0 || acc > 30) {
+        return Response.json({ error: "Invalid GPS capture values: valid coordinates and reported accuracy within 30 metres are required" }, { status: 400, headers: cors });
       }
       const pinOffsetMeters=Math.hypot((lat-rawLat)*111320,(lng-rawLng)*111320*Math.cos(rawLat*Math.PI/180));
       if(pinOffsetMeters>500) return Response.json({error:"Entrance pin is too far from the original GPS fix; please check the correct house"},{status:400,headers:cors});
       const readings = Array.isArray(body.readings) ? body.readings.slice(-20) : [];
       const cleanReadings = readings.map((r:any)=>({lat:Number(r?.lat),lng:Number(r?.lng),acc:Number(r?.acc),ts:Number(r?.ts)}))
-        .filter((r:any)=>Number.isFinite(r.lat)&&r.lat>=-90&&r.lat<=90&&Number.isFinite(r.lng)&&r.lng>=-180&&r.lng<=180&&Number.isFinite(r.acc)&&r.acc>=0&&r.acc<=5&&Number.isFinite(r.ts)&&Math.abs(Date.now()-r.ts)<=5*60*1000);
-      if(cleanReadings.length<5) return Response.json({error:"Five recent, precise GPS readings are required"},{status:400,headers:cors});
+        .filter((r:any)=>Number.isFinite(r.lat)&&r.lat>=-90&&r.lat<=90&&Number.isFinite(r.lng)&&r.lng>=-180&&r.lng<=180&&Number.isFinite(r.acc)&&r.acc>=0&&r.acc<=30&&Number.isFinite(r.ts)&&Math.abs(Date.now()-r.ts)<=5*60*1000);
+      if(cleanReadings.length<1) return Response.json({error:"At least one recent GPS reading is required"},{status:400,headers:cors});
       const readMeanLat=cleanReadings.reduce((a:number,r:any)=>a+r.lat,0)/cleanReadings.length;
       const readMeanLng=cleanReadings.reduce((a:number,r:any)=>a+r.lng,0)/cleanReadings.length;
       const readSpread=Math.max(...cleanReadings.map((r:any)=>Math.hypot((r.lat-readMeanLat)*111320,(r.lng-readMeanLng)*111320*Math.cos(readMeanLat*Math.PI/180))));
-      if(readSpread>5) return Response.json({error:"GPS readings are unstable; capture again while stationary"},{status:400,headers:cors});
+      if(readSpread>30) return Response.json({error:"GPS readings are unstable; capture again while stationary"},{status:400,headers:cors});
       // Delivery users may capture GPS only for consumers in their own current office allocation.
       // The signed-in identity is taken from the validated session, never from request data.
       if (user.role === "delivery") {
         const captureMode = String(body.capture_mode || "");
-        if (!["delivery_initial_mapping", "delivery_after_mark_delivered"].includes(captureMode)) {
+        if (!["delivery_initial_mapping", "delivery_after_mark_delivered", "delivery_manual_lookup"].includes(captureMode)) {
           return Response.json({ error: "Unsupported delivery GPS capture mode" }, { status: 400, headers: cors });
         }
-        const { data: assignedBooking, error: assignmentError } = await db.from("lpg_pending")
-          .select("consumer_no")
-          .eq("consumer_no", consumerNo)
-          .eq("delivery_man", user.name)
-          .limit(1)
-          .maybeSingle();
-        if (assignmentError) return Response.json({ error: "Could not verify this delivery assignment" }, { status: 503, headers: cors });
-        if (!assignedBooking) return Response.json({ error: "This consumer is not currently assigned to your delivery account" }, { status: 403, headers: cors });
+        if (captureMode !== "delivery_manual_lookup") {
+          const { data: assignedBooking, error: assignmentError } = await db.from("lpg_pending")
+            .select("consumer_no").eq("consumer_no", consumerNo).eq("delivery_man", user.name).limit(1).maybeSingle();
+          if (assignmentError) return Response.json({ error: "Could not verify this delivery assignment" }, { status: 503, headers: cors });
+          if (!assignedBooking) return Response.json({ error: "This consumer is not currently assigned to your delivery account" }, { status: 403, headers: cors });
+        }
       }
       const { data: existing, error: readError } = await db.from("lpg_gps")
         .select("lat,lng,acc,count,status,raw_lat,raw_lng,pin_lat,pin_lng").eq("consumer_no", consumerNo).maybeSingle();
