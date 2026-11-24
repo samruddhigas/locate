@@ -5801,6 +5801,11 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <div class="search-wrap">
     <input class="search-input" id="searchInput" type="text" placeholder="🔍 Search name, address…  नाव शोधा" oninput="renderList()" autocomplete="off">
   </div>
+  <div class="search-wrap" style="padding-top:0">
+    <input class="search-input" id="gpsOnlySearch" type="text" placeholder="📍 GPS-only: consumer number or name" autocomplete="off">
+    <button class="expand-call-btn" style="width:100%;margin-top:7px" onclick="searchGpsOnlyConsumers()">Search consumer for GPS only</button>
+    <div id="gpsOnlyResults"></div>
+  </div>
 
   <!-- Current stop (route mode) -->
   <div id="currentStopWrap" style="display:none">
@@ -6365,6 +6370,26 @@ function undoDone(id) {
 // ================================================================
 let _deliveryGpsWatch=null,_deliveryGpsSamples=[],_deliveryGpsBest=null,_deliveryGpsCurrent=null,_deliveryGpsCaptureMode='delivery_after_mark_delivered',_deliveryGpsMap=null,_deliveryGpsMarker=null,_deliveryGpsSatellite=null,_deliveryGpsStreet=null,_deliveryGpsLayer='satellite';
 function deliveryGpsDistance(a,b,c,d){const R=6371000,x=(c-a)*Math.PI/180,y=(d-b)*Math.PI/180,h=Math.sin(x/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)**2;return 2*R*Math.asin(Math.sqrt(h));}
+async function searchGpsOnlyConsumers(){
+  const q=document.getElementById('gpsOnlySearch').value.trim(),box=document.getElementById('gpsOnlyResults');
+  if(!q){box.textContent='Enter a consumer number or name.';return;}
+  box.textContent='Searching consumer master…';
+  try{
+    const result=await newProjectApiPost({action:'gps_search_consumers',q},DELIVERY_SESSION_TOKEN);
+    const rows=Array.isArray(result.data)?result.data:[];
+    box.replaceChildren();
+    if(!rows.length){box.textContent='No matching consumer found.';return;}
+    rows.forEach(c=>{
+      const card=document.createElement('div');card.className='card-expand open';card.style.marginTop='8px';
+      const name=document.createElement('strong');name.textContent=c.consumer_name||'Consumer';
+      const info=document.createElement('div');info.className='small';info.textContent='Consumer '+c.consumer_no+' · '+(c.area||'Area unavailable');
+      const address=document.createElement('div');address.className='small';address.textContent=c.address||'Address unavailable';
+      const btn=document.createElement('button');btn.className='expand-call-btn';btn.textContent='Capture GPS only';
+      btn.onclick=()=>captureDeliveryGPS({id:'',orderNo:'',consumerNo:String(c.consumer_no),consumerName:String(c.consumer_name||'Consumer'),area:String(c.area||''),address:String(c.address||'')},'delivery_manual_lookup');
+      card.append(name,info,address,btn);box.append(card);
+    });
+  }catch(e){box.textContent=e.message||'Consumer search failed.';}
+}
 async function captureDeliveryGPS(d, captureMode='delivery_after_mark_delivered') {
   if (!navigator.geolocation || !d?.consumerNo) { toast('⚠️ Location permission or GPS unavailable','#b45309'); return false; }
   toast('📍 Finding best GPS fix…','#2563eb');
