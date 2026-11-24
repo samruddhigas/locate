@@ -60,6 +60,10 @@ assert.ok(app.includes("await flushPendingGps()"), "GPS must sync before deliver
 assert.ok(app.includes("state.pendingGps.length"), "Logout must protect unsynchronized GPS captures");
 assert.ok(app.includes("action:'route_manage',op:'list'"), "DeliveryApp must load office-published routes");
 assert.ok(app.includes("Getting location…"), "Mark Done must attempt GPS automatically");
+assert.ok(app.includes("navigator.geolocation.watchPosition"), "GPS capture must continuously watch for better high-accuracy fixes");
+assert.ok(app.includes("bestFix.acc<=8"), "GPS capture should stop early when an 8m or better fix is available");
+assert.ok(app.includes("Best GPS accuracy was"), "GPS capture must reject poor final fixes instead of saving them as precise");
+assert.ok(app.includes("readings:[{lat:best.lat"), "Only the best selected fix should be submitted, without averaging while moving");
 assert.ok(app.includes("delivery_manual_lookup"), "DeliveryApp must support GPS-only consumer lookup");
 assert.ok(app.includes("pendingGps:state.pendingGps"), "Offline GPS captures must persist across reloads");
 assert.ok(app.includes("GPS not captured:"), "Delivery can complete with a clear GPS-missing status");
