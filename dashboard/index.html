@@ -5855,7 +5855,8 @@ window.addEventListener('DOMContentLoaded', () => {
   const today = todayKey();
   if (saved && saved.date === today && saved.dmName) {
     APP = saved;
-    if (!Array.isArray(APP.pendingCompletions)) APP.pendingCompletions = [];\n    if (!Array.isArray(APP.pendingGps)) APP.pendingGps = [];
+    if (!Array.isArray(APP.pendingCompletions)) APP.pendingCompletions = [];
+    if (!Array.isArray(APP.pendingGps)) APP.pendingGps = [];
     if (APP.deliverySyncVersion !== 3) { APP.pendingGps = APP.pendingGps || []; APP.deliverySyncVersion=3; }
     // Re-inject fresh data if available (dashboard may have updated deliveries)
     if (window.DELIVERY_DATA && window.DELIVERY_DATA.deliveries) {
@@ -6339,7 +6340,8 @@ async function flushPendingDeliveryCompletions(){
 async function syncDeliveryCompletions(){
   if(!DELIVERY_SESSION_TOKEN||!APP.dmName)return;
   try{
-    await flushPendingDeliveryGps();\n    const result=await newProjectApiPost({action:'delivery_completion',op:'list'},DELIVERY_SESSION_TOKEN);
+    await flushPendingDeliveryGps();
+    const result=await newProjectApiPost({action:'delivery_completion',op:'list'},DELIVERY_SESSION_TOKEN);
     const completed=new Set((result.data||[]).map(x=>String(x.booking_key)));
     APP.deliveries.forEach(d=>{
       if(completed.has(String(d.orderNo||d.id))){d.done=true;d.serverCompleted=true;d.syncPending=false;}
