@@ -639,8 +639,9 @@ Deno.serve(async (req) => {
       // Delivery users may capture GPS only for consumers in their own current office allocation.
       // The signed-in identity is taken from the validated session, never from request data.
       if (user.role === "delivery") {
-        if (String(body.capture_mode || "") !== "delivery_after_mark_delivered") {
-          return Response.json({ error: "Delivery GPS capture is available only after the delivery is marked complete on the device" }, { status: 400, headers: cors });
+        const captureMode = String(body.capture_mode || "");
+        if (!["delivery_initial_mapping", "delivery_after_mark_delivered"].includes(captureMode)) {
+          return Response.json({ error: "Unsupported delivery GPS capture mode" }, { status: 400, headers: cors });
         }
         const { data: assignedBooking, error: assignmentError } = await db.from("lpg_pending")
           .select("consumer_no")
