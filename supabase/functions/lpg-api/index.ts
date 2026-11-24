@@ -840,20 +840,53 @@ Deno.serve(async (req) => {
     if (action === "users_manage") {
       if (user.role !== "admin") return Response.json({ error: "Admin permission required" }, { status: 403, headers: cors });
       const op = String(body.op || "");
+      if (op === "list") {
+        const {data,error}=await db.from("lpg_users")
+          .select("id,role,name,active,created_by,created_at").order("role").order("name");
+        if(error)return Response.json({error:"Could not load user accounts"},{status:503,headers:cors});
+        return Response.json({data:data||[]},{headers:cors});
+      }
+      if (op === "set_active" || op === "reset_pin") {
+        const name=String(body.name||"").trim(),role=String(body.role||"").trim();
+        if(!name||name.length>100||!["staff","delivery"].includes(role))
+          return Response.json({error:"A valid staff or delivery account is required"},{status:400,headers:cors});
+        const {data:target,error:targetError}=await db.from("lpg_users")
+          .select("id,name,role,active").eq("name",name).eq("role",role).maybeSingle();
+        if(targetError)return Response.json({error:"Could not verify selected account"},{status:503,headers:cors});
+        if(!target)return Response.json({error:"User account not found"},{status:404,headers:cors});
+        if(op==="set_active"){
+          if(typeof body.active!=="boolean")return Response.json({error:"active must be true or false"},{status:400,headers:cors});
+          const {data,error}=await db.from("lpg_users").update({active:body.active})
+            .eq("id",target.id).select("id,name,role,active").single();
+          if(error)return Response.json({error:error.message},{status:400,headers:cors});
+          return Response.json({data},{headers:cors});
+        }
+        const pin=String(body.pin||"");
+        if(!/^\\d{4,8}$/.test(pin))return Response.json({error:"PIN must be 4–8 digits"},{status:400,headers:cors});
+        const salt=createPinSalt(),pinHash=await hashPin(pin,salt),fingerprint=await pinFingerprint(pin),legacyHash=await hashPinLegacy(pin);
+        const [{data:reusedFingerprint,error:fingerprintError},{data:reusedLegacy,error:legacyError}]=await Promise.all([
+          db.from("lpg_users").select("id").neq("id",target.id).eq("pin_fingerprint",fingerprint).limit(1),
+          db.from("lpg_users").select("id").neq("id",target.id).is("pin_salt",null).eq("pin_hash",legacyHash).limit(1)
+        ]);
+        if(fingerprintError||legacyError)return Response.json({error:"Could not verify PIN uniqueness"},{status:503,headers:cors});
+        if((reusedFingerprint||[]).length||(reusedLegacy||[]).length)
+          return Response.json({error:"This PIN is already used by another account. Choose a different PIN."},{status:409,headers:cors});
+        const {data,error}=await db.from("lpg_users").update({pin_hash:pinHash,pin_salt:salt,pin_fingerprint:fingerprint})
+          .eq("id",target.id).select("id,name,role,active").single();
+        if(error)return Response.json({error:error.message},{status:400,headers:cors});
+        return Response.json({data,success:true},{headers:cors});
+      }
       if (op !== "create") return Response.json({ error: "Unsupported users_manage operation" }, { status: 400, headers: cors });
       const role = String(body.role || "").trim();
       const name = String(body.name || "").trim();
       const pin = String(body.pin || "");
       if (!["staff", "delivery"].includes(role)) return Response.json({ error: "Role must be staff or delivery" }, { status: 400, headers: cors });
-      if (!name || name.length > 100 || /[\u0000-\u001f]/.test(name)) return Response.json({ error: "Name is required and must be 100 characters or less" }, { status: 400, headers: cors });
-      if (!/^\d{4,8}$/.test(pin)) return Response.json({ error: "PIN must be 4–8 digits" }, { status: 400, headers: cors });
+      if (!name || name.length > 100 || /[\\u0000-\\u001f]/.test(name)) return Response.json({ error: "Name is required and must be 100 characters or less" }, { status: 400, headers: cors });
+      if (!/^\\d{4,8}$/.test(pin)) return Response.json({ error: "PIN must be 4–8 digits" }, { status: 400, headers: cors });
       const { data: existing, error: existingError } = await db.from("lpg_users").select("id,name,role").ilike("name", name).limit(5);
       if (existingError) return Response.json({ error: "Account duplicate check failed" }, { status: 400, headers: cors });
       if ((existing || []).some((u:any) => String(u.name).toLowerCase() === name.toLowerCase())) return Response.json({ error: "An account with this name already exists. Names must be unique across roles." }, { status: 409, headers: cors });
-      const newUserPinSalt=createPinSalt();
-      const newUserPinHash=await hashPin(pin,newUserPinSalt);
-      const newUserFingerprint=await pinFingerprint(pin);
-      const legacyUserHash=await hashPinLegacy(pin);
+      const newUserPinSalt=createPinSalt(),newUserPinHash=await hashPin(pin,newUserPinSalt),newUserFingerprint=await pinFingerprint(pin),legacyUserHash=await hashPinLegacy(pin);
       const [{data:reusedFingerprint,error:fingerprintError},{data:reusedLegacy,error:legacyError}]=await Promise.all([
         db.from("lpg_users").select("id").eq("pin_fingerprint",newUserFingerprint).limit(1),
         db.from("lpg_users").select("id").is("pin_salt",null).eq("pin_hash",legacyUserHash).limit(1)
