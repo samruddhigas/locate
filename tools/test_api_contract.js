@@ -61,7 +61,10 @@ assert.ok(app.includes("state.pendingGps.length"), "Logout must protect unsynchr
 assert.ok(app.includes("action:'route_manage',op:'list'"), "DeliveryApp must load office-published routes");
 assert.ok(app.includes("Getting location…"), "Mark Done must attempt GPS automatically");
 assert.ok(app.includes("navigator.geolocation.watchPosition"), "GPS capture must continuously watch for better high-accuracy fixes");
-assert.ok(app.includes("bestFix.acc<=10"), "GPS capture should stop early when a 10m or better fix is available");\nassert.ok(app.includes(")),18000)"), "GPS watch must have a bounded 18-second wait");\nassert.ok(app.includes("String(x.consumer_no)===String(item.consumer_no)"), "GPS queue sync must remove only the matching consumer capture");\nassert.ok(!app.includes("state.pendingGps.some(g=>String(g.booking_key)===String(item.booking_key)))"), "GPS queue failures must not block delivery completion sync");
+assert.ok(app.includes("bestFix.acc<=10"), "GPS capture should stop early when a 10m or better fix is available");
+assert.ok(app.includes(")),18000)"), "GPS watch must have a bounded 18-second wait");
+assert.ok(app.includes("String(x.consumer_no)===String(item.consumer_no)"), "GPS queue sync must remove only the matching consumer capture");
+assert.ok(!app.includes("state.pendingGps.some(g=>String(g.booking_key)===String(item.booking_key)))"), "GPS queue failures must not block delivery completion sync");
 assert.ok(app.includes("Best GPS accuracy was"), "GPS capture must reject poor final fixes instead of saving them as precise");
 assert.ok(app.includes("readings:[{lat:best.lat"), "Only the best selected fix should be submitted, without averaging while moving");
 assert.ok(app.includes("delivery_manual_lookup"), "DeliveryApp must support GPS-only consumer lookup");
