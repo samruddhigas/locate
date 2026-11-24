@@ -59,6 +59,13 @@ assert.ok(app.includes("pendingGps"), "DeliveryApp must retain offline GPS captu
 assert.ok(app.includes("await flushPendingGps()"), "GPS must sync before delivery completion");
 assert.ok(app.includes("state.pendingGps.length"), "Logout must protect unsynchronized GPS captures");
 assert.ok(app.includes("action:'route_manage',op:'list'"), "DeliveryApp must load office-published routes");
+assert.ok(app.includes("Getting location…"), "Mark Done must attempt GPS automatically");
+assert.ok(app.includes("delivery_manual_lookup"), "DeliveryApp must support GPS-only consumer lookup");
+assert.ok(app.includes("pendingGps:state.pendingGps"), "Offline GPS captures must persist across reloads");
+assert.ok(app.includes("GPS not captured:"), "Delivery can complete with a clear GPS-missing status");
+assert.ok(api.includes('acc > 30'), "Server must enforce a realistic 30m maximum GPS accuracy");
+assert.ok(api.includes('"delivery_manual_lookup"'), "Server must permit GPS-only consumer lookup for delivery accounts");
+assert.ok(api.includes('gps_status: hasUsableGps ? "captured_pending_office_review" : "not_captured"'), "Completion must record GPS status separately from delivery status");
 assert.ok(dashboard.includes("async function publishSelectedRoute()"), "Office dashboard must provide route publishing");
 assert.ok(dashboard.includes("stopType==='approved_consumer_gps'"), "Office dashboard must publish only approved GPS stops");
 
