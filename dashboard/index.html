@@ -5837,7 +5837,7 @@ const SAVE_KEY = 'lpg_delivery_v3';
 const SB_URL   = window.SB_URL  || null;
 const SB_ANON  = window.SB_ANON || null;
 
-let APP = { dmName:'', deliveries:[], date:'', mode:'list', pendingCompletions:[], deliverySyncVersion:2 };
+let APP = { dmName:'', deliveries:[], date:'', mode:'list', pendingCompletions:[], pendingGps:[], deliverySyncVersion:3 };
 let _gps = null;          // latest GPS reading
 let _gpsCount = 0;
 let _sbClient = null;
@@ -5855,8 +5855,8 @@ window.addEventListener('DOMContentLoaded', () => {
   const today = todayKey();
   if (saved && saved.date === today && saved.dmName) {
     APP = saved;
-    if (!Array.isArray(APP.pendingCompletions)) APP.pendingCompletions = [];
-    if (APP.deliverySyncVersion !== 2) { APP.deliveries = (APP.deliveries || []).map(d => ({...d, done:false, doneAt:null, serverCompleted:false, syncPending:false})); APP.pendingCompletions=[]; APP.deliverySyncVersion=2; }
+    if (!Array.isArray(APP.pendingCompletions)) APP.pendingCompletions = [];\n    if (!Array.isArray(APP.pendingGps)) APP.pendingGps = [];
+    if (APP.deliverySyncVersion !== 3) { APP.pendingGps = APP.pendingGps || []; APP.deliverySyncVersion=3; }
     // Re-inject fresh data if available (dashboard may have updated deliveries)
     if (window.DELIVERY_DATA && window.DELIVERY_DATA.deliveries) {
       mergeFreshData(window.DELIVERY_DATA.deliveries);
@@ -6281,14 +6281,10 @@ function toggleExpand(id) {
 async function markDone(id) {
   const d = APP.deliveries.find(x => x.id === id);
   if (!d || d.done) return;
-  // A GPS coordinate in the imported file is not enough: the capture must be saved to the central GPS registry.
-  if (!d.gpsAt) {
-    toast('📍 GPS required first · capture and save the customer entrance location','#b45309');
-    captureDeliveryGPS(d, 'delivery_after_mark_delivered');
-    return;
-  }
+  if (!d.consumerNo || !(d.orderNo || d.id)) { toast('⚠️ Booking details incomplete · refresh from office','#b45309'); return; }
+  // One action: try to capture the best GPS fix, but never block a real delivery if GPS is unavailable.
+  if (!d.gpsAt) await captureDeliveryGPS(d, 'delivery_after_mark_delivered');
   const record={booking_key:String(d.orderNo||d.id||''),consumer_no:String(d.consumerNo||''),qty:Math.max(1,Number(d.qty)||1),completed_at:new Date().toISOString()};
-  if(!record.booking_key||!record.consumer_no){toast('⚠️ Booking details incomplete · refresh from office','#b45309');return;}
   try{
     if(!navigator.onLine)throw new Error('OFFLINE_QUEUE');
     const result=await newProjectApiPost({action:'delivery_completion',op:'save',...record},DELIVERY_SESSION_TOKEN);
@@ -6296,20 +6292,32 @@ async function markDone(id) {
     d.done=true;d.serverCompleted=true;d.syncPending=false;
     d.doneAt=new Date(record.completed_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
     APP.pendingCompletions=(APP.pendingCompletions||[]).filter(x=>x.booking_key!==record.booking_key);
-    save();toast('✅ Delivered · central record saved');renderAll();
+    save();toast(d.gpsAt==='queued'?'✅ Delivered · GPS waiting to sync':'✅ Delivered · central record saved');renderAll();
   }catch(e){
     if(e.message==='OFFLINE_QUEUE'||!navigator.onLine){
       APP.pendingCompletions=APP.pendingCompletions||[];
       if(!APP.pendingCompletions.some(x=>x.booking_key===record.booking_key))APP.pendingCompletions.push(record);
       d.done=true;d.serverCompleted=false;d.syncPending=true;d.doneAt=new Date(record.completed_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
-      save();toast('📴 Delivery queued · will sync when internet returns','#b45309');renderAll();
+      save();toast('📴 Delivery queued · GPS and delivery sync when internet returns','#b45309');renderAll();
     }else{toast('⚠️ Delivery not saved · '+e.message,'#b45309');}
     return;
   }
-
   if (APP.mode === 'route') {
     setTimeout(() => document.getElementById('currentStopWrap')?.scrollIntoView({ behavior:'smooth', block:'start' }), 300);
   }
+}
+
+async function flushPendingDeliveryGps(){
+  if(!DELIVERY_SESSION_TOKEN||!navigator.onLine||!Array.isArray(APP.pendingGps)||!APP.pendingGps.length)return;
+  for(const item of [...APP.pendingGps]){
+    try{
+      await newProjectApiPost({action:'gps_capture',...item},DELIVERY_SESSION_TOKEN);
+      APP.pendingGps=APP.pendingGps.filter(x=>!(String(x.booking_key||'')===String(item.booking_key||'')&&String(x.consumer_no)===String(item.consumer_no)));
+      const d=APP.deliveries.find(x=>String(x.orderNo||x.id)===String(item.booking_key));
+      if(d&&d.gpsAt==='queued')d.gpsAt=new Date().toISOString();
+    }catch(e){if(/Session expired|invalid/i.test(e.message))break;}
+  }
+  save();renderAll();
 }
 
 async function flushPendingDeliveryCompletions(){
@@ -6331,7 +6339,7 @@ async function flushPendingDeliveryCompletions(){
 async function syncDeliveryCompletions(){
   if(!DELIVERY_SESSION_TOKEN||!APP.dmName)return;
   try{
-    const result=await newProjectApiPost({action:'delivery_completion',op:'list'},DELIVERY_SESSION_TOKEN);
+    await flushPendingDeliveryGps();\n    const result=await newProjectApiPost({action:'delivery_completion',op:'list'},DELIVERY_SESSION_TOKEN);
     const completed=new Set((result.data||[]).map(x=>String(x.booking_key)));
     APP.deliveries.forEach(d=>{
       if(completed.has(String(d.orderNo||d.id))){d.done=true;d.serverCompleted=true;d.syncPending=false;}
@@ -6339,7 +6347,7 @@ async function syncDeliveryCompletions(){
     await flushPendingDeliveryCompletions();save();renderAll();
   }catch(e){toast('⚠️ Could not refresh central delivery status · '+e.message,'#b45309');}
 }
-window.addEventListener('online',flushPendingDeliveryCompletions);
+window.addEventListener('online',()=>{flushPendingDeliveryGps();flushPendingDeliveryCompletions();});
 
 function undoDone(id) {
   const d = APP.deliveries.find(x => x.id === id);
@@ -6355,22 +6363,55 @@ function undoDone(id) {
 // ================================================================
 let _deliveryGpsWatch=null,_deliveryGpsSamples=[],_deliveryGpsBest=null,_deliveryGpsCurrent=null,_deliveryGpsCaptureMode='delivery_after_mark_delivered',_deliveryGpsMap=null,_deliveryGpsMarker=null,_deliveryGpsSatellite=null,_deliveryGpsStreet=null,_deliveryGpsLayer='satellite';
 function deliveryGpsDistance(a,b,c,d){const R=6371000,x=(c-a)*Math.PI/180,y=(d-b)*Math.PI/180,h=Math.sin(x/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)**2;return 2*R*Math.asin(Math.sqrt(h));}
-async function captureDeliveryGPS(d, captureMode='delivery_after_mark_delivered') {
-  if (!navigator.geolocation || !d?.consumerNo) return;
-  _deliveryGpsCurrent=d;_deliveryGpsSamples=[];_deliveryGpsBest=null;_deliveryGpsCaptureMode=captureMode;
-  toast('📍 GPS checking · कृपया स्थिर थांबा','#2563eb');
-  _deliveryGpsWatch=navigator.geolocation.watchPosition(pos=>{
-    const c=pos.coords;if(!Number.isFinite(c.accuracy)||c.accuracy>5||!Number.isFinite(c.latitude)||!Number.isFinite(c.longitude))return;
-    _deliveryGpsSamples.push({lat:c.latitude,lng:c.longitude,acc:c.accuracy,ts:Date.now()});if(_deliveryGpsSamples.length>12)_deliveryGpsSamples.shift();
-    const recent=_deliveryGpsSamples.slice(-5);if(recent.length<5)return;
-    const ml=recent.reduce((a,x)=>a+x.lat,0)/5,mn=recent.reduce((a,x)=>a+x.lng,0)/5;
-    const spread=Math.max(...recent.map(x=>Math.hypot((x.lat-ml)*111320,(x.lng-mn)*111320*Math.cos(ml*Math.PI/180))));
-    if(spread<=5){_deliveryGpsBest=[...recent].sort((a,b)=>a.acc-b.acc)[0];if(_deliveryGpsWatch!==null)navigator.geolocation.clearWatch(_deliveryGpsWatch);_deliveryGpsWatch=null;showDeliveryGpsPin(d,_deliveryGpsBest);}
-  },err=>{if(_deliveryGpsWatch!==null)navigator.geolocation.clearWatch(_deliveryGpsWatch);_deliveryGpsWatch=null;toast(err.code===1?'⚠️ GPS permission unavailable':'⚠️ GPS unavailable · delivery saved','#b45309');},{enableHighAccuracy:true,maximumAge:0,timeout:90000});
-  setTimeout(()=>{if(_deliveryGpsWatch!==null&&!_deliveryGpsBest){navigator.geolocation.clearWatch(_deliveryGpsWatch);_deliveryGpsWatch=null;toast('⚠️ Precise GPS not available · delivery saved, location not submitted','#b45309');}},90000);
+async function captureDeliveryGPS(d, captureMode='deasync function captureDeliveryGPS(d, captureMode='delivery_after_mark_delivered') {
+  if (!navigator.geolocation || !d?.consumerNo) { toast('⚠️ Location permission or GPS unavailable','#b45309'); return false; }
+  toast('📍 Finding best GPS fix…','#2563eb');
+  try {
+    const best = await new Promise((resolve,reject)=>{
+      let watch=null,timer=null,bestFix=null,finished=false;
+      const finish=err=>{
+        if(finished)return;finished=true;
+        if(watch!==null)navigator.geolocation.clearWatch(watch);
+        if(timer!==null)clearTimeout(timer);
+        if(err)reject(err);else resolve(bestFix);
+      };
+      timer=setTimeout(()=>finish(bestFix?null:new Error('No reliable GPS fix. Move to an open area and retry.')),18000);
+      try {
+        watch=navigator.geolocation.watchPosition(pos=>{
+          const c=pos.coords,acc=Number(c.accuracy);
+          if(!Number.isFinite(acc)||acc<=0||acc>1000)return;
+          const fix={lat:Number(c.latitude),lng:Number(c.longitude),acc,ts:Number(pos.timestamp)||Date.now()};
+          if(!Number.isFinite(fix.lat)||!Number.isFinite(fix.lng))return;
+          if(!bestFix||fix.acc<bestFix.acc)bestFix=fix;
+          if(acc<=10)finish();
+        },err=>{
+          if(err.code===1)finish(new Error('Location permission denied. Allow precise location for this app.'));
+        },{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+      } catch(e) { finish(e); }
+    });
+    if(!best||best.acc>30)throw new Error('Best GPS accuracy was '+Math.round(best?.acc||0)+' m. Need 30 m or better.');
+    const payload={booking_key:String(d.orderNo||d.id||''),consumer_no:String(d.consumerNo),raw_lat:best.lat,raw_lng:best.lng,pin_lat:best.lat,pin_lng:best.lng,lat:best.lat,lng:best.lng,acc:best.acc,readings:[{lat:best.lat,lng:best.lng,acc:best.acc,ts:best.ts}],capture_mode:captureMode};
+    try {
+      await newProjectApiPost({action:'gps_capture',...payload},DELIVERY_SESSION_TOKEN);
+      d.lat=best.lat;d.lng=best.lng;d.gpsAt=new Date().toISOString();d.gpsAccuracy=best.acc;save();
+      toast('📍 Best GPS saved · ±'+Math.round(best.acc)+' m','#22c55e');
+      return true;
+    } catch(e) {
+      if(!navigator.onLine||/failed to fetch|networkerror|load failed/i.test(e.message||'')){
+        APP.pendingGps=Array.isArray(APP.pendingGps)?APP.pendingGps:[];
+        if(!APP.pendingGps.some(x=>String(x.booking_key||'')===String(payload.booking_key)&&String(x.consumer_no)===String(payload.consumer_no)))APP.pendingGps.push(payload);
+        d.lat=best.lat;d.lng=best.lng;d.gpsAt='queued';d.gpsAccuracy=best.acc;save();
+        toast('📍 GPS captured · waiting to sync · ±'+Math.round(best.acc)+' m','#b45309');
+        return false;
+      }
+      throw e;
+    }
+  } catch(e) {
+    toast('⚠️ GPS not captured · '+(e.message||'try again'),'#b45309');
+    return false;
+  }
 }
-function showDeliveryGpsPin(d,best){
-  if(!window.L){toast('⚠️ Map unavailable · GPS not submitted','#b45309');return;}
+{toast('⚠️ Map unavailable · GPS not submitted','#b45309');return;}
   document.getElementById('deliveryGpsPinConsumer').textContent=(d.consumerName||'Customer')+' · '+d.consumerNo;
   document.getElementById('deliveryGpsPinAccuracy').textContent='±'+best.acc.toFixed(1)+' m';
   document.getElementById('deliveryGpsPinOverlay').classList.add('open');
