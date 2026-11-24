@@ -6413,15 +6413,6 @@ async function captureDeliveryGPS(d, captureMode='delivery_after_mark_delivered'
     return false;
   }
 }
-{toast('⚠️ Map unavailable · GPS not submitted','#b45309');return;}
-  document.getElementById('deliveryGpsPinConsumer').textContent=(d.consumerName||'Customer')+' · '+d.consumerNo;
-  document.getElementById('deliveryGpsPinAccuracy').textContent='±'+best.acc.toFixed(1)+' m';
-  document.getElementById('deliveryGpsPinOverlay').classList.add('open');
-  if(!_deliveryGpsMap){_deliveryGpsMap=L.map('deliveryGpsPinMap',{zoomControl:true}).setView([best.lat,best.lng],20);_deliveryGpsStreet=L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',{maxZoom:22,attribution:'© OpenStreetMap contributors © CARTO'});_deliveryGpsSatellite=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Tiles © Esri'});_deliveryGpsSatellite.addTo(_deliveryGpsMap);}else _deliveryGpsMap.setView([best.lat,best.lng],20);
-  if(_deliveryGpsMarker)_deliveryGpsMarker.remove();_deliveryGpsMarker=L.marker([best.lat,best.lng],{draggable:true}).addTo(_deliveryGpsMap);
-  _deliveryGpsMarker.on('dragend',()=>{const p=_deliveryGpsMarker.getLatLng();document.getElementById('deliveryGpsPinCoords').textContent='Entrance pin offset: '+Math.round(deliveryGpsDistance(best.lat,best.lng,p.lat,p.lng))+' m';});
-  document.getElementById('deliveryGpsPinCoords').textContent='Move pin to the actual main entrance.';setTimeout(()=>_deliveryGpsMap.invalidateSize(),180);
-}
 function showDeliveryGpsPin(d,best){
   if(!window.L){toast('⚠️ Map unavailable · GPS not submitted','#b45309');return;}
   document.getElementById('deliveryGpsPinConsumer').textContent=(d.consumerName||'Customer')+' · '+d.consumerNo;
