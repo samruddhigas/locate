@@ -75,5 +75,10 @@ assert.ok(api.includes('"delivery_manual_lookup"'), "Server must permit GPS-only
 assert.ok(api.includes('gps_status: hasUsableGps ? "captured_pending_office_review" : "not_captured"'), "Completion must record GPS status separately from delivery status");
 assert.ok(dashboard.includes("async function publishSelectedRoute()"), "Office dashboard must provide route publishing");
 assert.ok(dashboard.includes("stopType==='approved_consumer_gps'"), "Office dashboard must publish only approved GPS stops");
+assert.ok(dashboard.includes("if (!d.gpsAt) await captureDeliveryGPS(d, 'delivery_after_mark_delivered')"), "Embedded DeliveryApp must auto-capture GPS on Mark Done");
+assert.ok(dashboard.includes("navigator.geolocation.watchPosition(pos=>"), "Embedded DeliveryApp must use continuous GPS updates");
+assert.ok(dashboard.includes("if(acc<=10)finish()"), "Embedded DeliveryApp must stop early for a 10m GPS fix");
+assert.ok(dashboard.includes("APP.pendingGps"), "Embedded DeliveryApp must persist and sync offline GPS captures");
+assert.ok(api.includes('DELIVERY_BOY_MANUAL_LOOKUP'), "Manual GPS-only captures must be clearly labeled in the GPS registry");
 
 console.log("API contract tests passed: GPS gate, central completion, offline queue, approved GPS routes, import isolation, and security guards.");
