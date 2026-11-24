@@ -5836,7 +5836,7 @@ const SAVE_KEY = 'lpg_delivery_v3';
 const SB_URL   = window.SB_URL  || null;
 const SB_ANON  = window.SB_ANON || null;
 
-let APP = { dmName:'', deliveries:[], date:'', mode:'list' };
+let APP = { dmName:'', deliveries:[], date:'', mode:'list', pendingCompletions:[], deliverySyncVersion:2 };
 let _gps = null;          // latest GPS reading
 let _gpsCount = 0;
 let _sbClient = null;
@@ -5854,11 +5854,14 @@ window.addEventListener('DOMContentLoaded', () => {
   const today = todayKey();
   if (saved && saved.date === today && saved.dmName) {
     APP = saved;
+    if (!Array.isArray(APP.pendingCompletions)) APP.pendingCompletions = [];
+    if (APP.deliverySyncVersion !== 2) { APP.deliveries = (APP.deliveries || []).map(d => ({...d, done:false, doneAt:null, serverCompleted:false, syncPending:false})); APP.pendingCompletions=[]; APP.deliverySyncVersion=2; }
     // Re-inject fresh data if available (dashboard may have updated deliveries)
     if (window.DELIVERY_DATA && window.DELIVERY_DATA.deliveries) {
       mergeFreshData(window.DELIVERY_DATA.deliveries);
     }
     showMain();
+    syncDeliveryCompletions();
   } else {
     buildSetup();
   }
@@ -6009,9 +6012,10 @@ function startDelivery() {
   deliveries = detectModeAndSort(deliveries);
 
   const mode = detectMode(deliveries);
-  APP = { dmName: name, deliveries, date: todayKey(), mode };
+  APP = { dmName: name, deliveries, date: todayKey(), mode, pendingCompletions:[], deliverySyncVersion:2 };
   save();
   showMain();
+  syncDeliveryCompletions();
 }
 
 // ================================================================
@@ -6273,38 +6277,76 @@ function toggleExpand(id) {
 // ================================================================
 // MARK DONE
 // ================================================================
-function markDone(id) {
+async function markDone(id) {
   const d = APP.deliveries.find(x => x.id === id);
   if (!d || d.done) return;
-  // Require a saved customer GPS pin before confirming delivery.
-  if (!d.gpsAt && !(d.lat != null && d.lng != null && Number.isFinite(Number(d.lat)) && Number.isFinite(Number(d.lng)))) {
+  // A GPS coordinate in the imported file is not enough: the capture must be saved to the central GPS registry.
+  if (!d.gpsAt) {
     toast('📍 GPS required first · capture and save the customer entrance location','#b45309');
     captureDeliveryGPS(d, 'delivery_after_mark_delivered');
     return;
   }
+  const record={booking_key:String(d.orderNo||d.id||''),consumer_no:String(d.consumerNo||''),qty:Math.max(1,Number(d.qty)||1),completed_at:new Date().toISOString()};
+  if(!record.booking_key||!record.consumer_no){toast('⚠️ Booking details incomplete · refresh from office','#b45309');return;}
+  try{
+    if(!navigator.onLine)throw new Error('OFFLINE_QUEUE');
+    const result=await newProjectApiPost({action:'delivery_completion',op:'save',...record},DELIVERY_SESSION_TOKEN);
+    if(!result.success)throw new Error(result.error||'Delivery could not be saved');
+    d.done=true;d.serverCompleted=true;d.syncPending=false;
+    d.doneAt=new Date(record.completed_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+    APP.pendingCompletions=(APP.pendingCompletions||[]).filter(x=>x.booking_key!==record.booking_key);
+    save();toast('✅ Delivered · central record saved');renderAll();
+  }catch(e){
+    if(e.message==='OFFLINE_QUEUE'||!navigator.onLine){
+      APP.pendingCompletions=APP.pendingCompletions||[];
+      if(!APP.pendingCompletions.some(x=>x.booking_key===record.booking_key))APP.pendingCompletions.push(record);
+      d.done=true;d.serverCompleted=false;d.syncPending=true;d.doneAt=new Date(record.completed_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+      save();toast('📴 Delivery queued · will sync when internet returns','#b45309');renderAll();
+    }else{toast('⚠️ Delivery not saved · '+e.message,'#b45309');}
+    return;
+  }
 
-  d.done   = true;
-  d.doneAt = new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
-
-  save();
-  toast('✅ Delivered · झाले!');
-  renderAll();
-
-  // Auto-scroll to next stop in route mode
   if (APP.mode === 'route') {
-    setTimeout(() => {
-      document.getElementById('currentStopWrap')?.scrollIntoView({ behavior:'smooth', block:'start' });
-    }, 300);
+    setTimeout(() => document.getElementById('currentStopWrap')?.scrollIntoView({ behavior:'smooth', block:'start' }), 300);
   }
 }
+
+async function flushPendingDeliveryCompletions(){
+  if(!DELIVERY_SESSION_TOKEN||!navigator.onLine||!Array.isArray(APP.pendingCompletions)||!APP.pendingCompletions.length)return;
+  const queue=[...APP.pendingCompletions];
+  for(const item of queue){
+    try{
+      const result=await newProjectApiPost({action:'delivery_completion',op:'save',...item},DELIVERY_SESSION_TOKEN);
+      if(result.success){
+        APP.pendingCompletions=APP.pendingCompletions.filter(x=>x.booking_key!==item.booking_key);
+        const d=APP.deliveries.find(x=>String(x.orderNo||x.id)===String(item.booking_key));
+        if(d){d.done=true;d.serverCompleted=true;d.syncPending=false;}
+      }
+    }catch(e){if(/Session expired|invalid/i.test(e.message))break;}
+  }
+  save();renderAll();
+}
+
+async function syncDeliveryCompletions(){
+  if(!DELIVERY_SESSION_TOKEN||!APP.dmName)return;
+  try{
+    const result=await newProjectApiPost({action:'delivery_completion',op:'list'},DELIVERY_SESSION_TOKEN);
+    const completed=new Set((result.data||[]).map(x=>String(x.booking_key)));
+    APP.deliveries.forEach(d=>{
+      if(completed.has(String(d.orderNo||d.id))){d.done=true;d.serverCompleted=true;d.syncPending=false;}
+    });
+    await flushPendingDeliveryCompletions();save();renderAll();
+  }catch(e){toast('⚠️ Could not refresh central delivery status · '+e.message,'#b45309');}
+}
+window.addEventListener('online',flushPendingDeliveryCompletions);
 
 function undoDone(id) {
   const d = APP.deliveries.find(x => x.id === id);
   if (!d) return;
-  d.done = false; d.doneAt = null; d.gpsAt = null;
-  save();
-  toast('↩ Undone · पूर्ववत', '#f59e0b');
-  renderAll();
+  if(d.serverCompleted){toast('A saved delivery cannot be undone by the delivery account. Contact the office.','#b45309');return;}
+  if(d.syncPending){APP.pendingCompletions=(APP.pendingCompletions||[]).filter(x=>x.booking_key!==String(d.orderNo||d.id));}
+  d.done = false; d.doneAt = null; d.gpsAt = null;d.syncPending=false;
+  save();toast('↩ Local delivery entry cleared · पूर्ववत', '#f59e0b');renderAll();
 }
 
 // ================================================================
