@@ -124,39 +124,61 @@ function openDetail(r){state.selected=r;$('stopDetail').replaceChildren();const 
 $('closeDialog').onclick=()=>$('stopDialog').close();$('stopDialog').addEventListener('click',e=>{if(e.target===$('stopDialog'))$('stopDialog').close()});
 async function captureGps(r,button,captureMode='delivery_initial_mapping',options={}){
  if(!navigator.geolocation){const msg='Location permission or GPS is unavailable on this phone.';if(!options.silent)alert(msg);return {saved:false,message:msg}}
- const status=$('stopDetail').querySelector('.gps-status');
- button.disabled=true;button.textContent='Getting GPS fix…';
- const geo=opts=>new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,reject,opts));
+ const detail=$('stopDetail');
+ const status=detail?detail.querySelector('.gps-status'):null;
+ button.disabled=true;button.textContent='Finding best GPS…';
  try{
-  let pos=null,lastError=null;
-  // One fresh high-accuracy fix first; retry once only if the phone reports a poor fix.
-  for(let attempt=0;attempt<2;attempt++){
+  // Continuously request fresh GNSS/high-accuracy fixes. Never average coordinates:
+  // while the delivery person is moving, averaging would place the customer between locations.
+  const best=await new Promise((resolve,reject)=>{
+   let watchId=null,deadline=null,bestFix=null,finished=false;
+   const finish=(err)=>{
+    if(finished)return;finished=true;
+    if(watchId!==null)navigator.geolocation.clearWatch(watchId);
+    if(deadline!==null)clearTimeout(deadline);
+    if(err)reject(err);else resolve(bestFix);
+   };
+   deadline=setTimeout(()=>finish(bestFix?null:new Error('No reliable GPS fix yet. Move to an open area and retry.')),24000);
    try{
-    pos=await geo({enableHighAccuracy:true,timeout:attempt===0?12000:16000,maximumAge:attempt===0?10000:0});
-    if(Number.isFinite(pos.coords.accuracy)&&pos.coords.accuracy<=30)break;
-    lastError=new Error('Phone accuracy is '+Math.round(pos.coords.accuracy)+' m; need 30 m or better.');
-    pos=null;
-   }catch(e){lastError=e}
-  }
-  if(!pos)throw lastError||new Error('Could not get a usable GPS fix.');
-  const accuracy=Number(pos.coords.accuracy);
-  const payload={booking_key:String(r.booking||''),consumer_no:r.consumer,raw_lat:pos.coords.latitude,raw_lng:pos.coords.longitude,pin_lat:pos.coords.latitude,pin_lng:pos.coords.longitude,lat:pos.coords.latitude,lng:pos.coords.longitude,acc:accuracy,readings:[{lat:pos.coords.latitude,lng:pos.coords.longitude,acc:accuracy,ts:pos.timestamp}],capture_mode:captureMode};
+    watchId=navigator.geolocation.watchPosition(pos=>{
+     const c=pos.coords,acc=Number(c.accuracy);
+     if(!Number.isFinite(acc)||acc<=0||acc>1000)return;
+     const fix={lat:Number(c.latitude),lng:Number(c.longitude),acc,ts:Number(pos.timestamp)||Date.now()};
+     if(!Number.isFinite(fix.lat)||!Number.isFinite(fix.lng))return;
+     if(!bestFix||fix.acc<bestFix.acc)bestFix=fix;
+     button.textContent='Best GPS '+Math.round(bestFix.acc)+' m…';
+     if(status)status.textContent='Improving GPS fix · best so far '+Math.round(bestFix.acc)+' m';
+     // Stop as soon as the phone supplies a genuinely good fix.
+     if(bestFix.acc<=8)finish();
+    },err=>{
+     if(!bestFix)finish(new Error(err.code===1?'Location permission denied. Allow precise location for this app.':err.code===2?'Phone location is unavailable. Turn on Location and try again.':'GPS is taking too long. Move outdoors and retry.'));
+    },{enableHighAccuracy:true,timeout:26000,maximumAge:0});
+   }catch(e){finish(e)}
+  });
+  if(!best||best.acc>30)throw new Error('Best GPS accuracy was '+Math.round(best?.acc||0)+' m. Need 30 m or better. Keep Location enabled and retry in a more open place.');
+  const accuracy=best.acc;
+  const payload={booking_key:String(r.booking||''),consumer_no:r.consumer,raw_lat:best.lat,raw_lng:best.lng,pin_lat:best.lat,pin_lng:best.lng,lat:best.lat,lng:best.lng,acc:accuracy,
+   // Send only the selected best fix to the server. Other watch readings are used to
+   // choose the best fix locally, not averaged or rejected just because the user moved.
+   readings:[{lat:best.lat,lng:best.lng,acc:accuracy,ts:best.ts}],capture_mode:captureMode};
   try{
    const result=await api({action:'gps_capture',...payload});
-   state.gpsCaptured.add(completionKey(r,state.rows.indexOf(r)));persist();
-   if(status)status.textContent='GPS saved · accuracy about '+Math.round(accuracy)+' m · pending office verification.';
-   button.textContent='GPS captured';
-   const msg=result.message||('GPS saved with '+Math.round(accuracy)+' m reported accuracy.');
+   if(!r.manualGpsLookup)state.gpsCaptured.add(completionKey(r,state.rows.indexOf(r)));
+   persist();
+   if(status)status.textContent='Best GPS saved · '+Math.round(accuracy)+' m accuracy · pending office verification.';
+   button.textContent='GPS saved · '+Math.round(accuracy)+' m';
+   const msg=(result.message||'Best available GPS fix saved.')+' Accuracy: about '+Math.round(accuracy)+' metres.';
    if(!options.silent)alert(msg);
    return {saved:true,message:msg,accuracy};
   }catch(err){
    const networkFailure=!navigator.onLine||/failed to fetch|networkerror|load failed/i.test(err.message||'');
    if(!networkFailure)throw err;
    if(!state.pendingGps.some(x=>String(x.booking_key||'')===String(payload.booking_key||'')&&x.consumer_no===payload.consumer_no))state.pendingGps.push(payload);
-   state.gpsCaptured.add(completionKey(r,state.rows.indexOf(r)));persist();
-   if(status)status.textContent='GPS captured on this phone · waiting for internet sync.';
-   button.textContent='GPS queued';
-   const msg='GPS captured on this phone and queued to sync when internet returns.';
+   if(!r.manualGpsLookup)state.gpsCaptured.add(completionKey(r,state.rows.indexOf(r)));
+   persist();
+   if(status)status.textContent='Best GPS captured · '+Math.round(accuracy)+' m · waiting for internet sync.';
+   button.textContent='GPS queued · '+Math.round(accuracy)+' m';
+   const msg='Best GPS captured on this phone and queued to sync. Accuracy: about '+Math.round(accuracy)+' metres.';
    if(!options.silent)alert(msg);
    return {saved:false,queued:true,message:msg,accuracy};
   }
