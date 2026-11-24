@@ -55,6 +55,9 @@ assert.ok(!dashboard.includes("DB._client.table('lpg_users')"), "Dashboard must 
 
 assert.ok(app.includes("action:'delivery_completion',op:'save'"), "DeliveryApp must save completion centrally");
 assert.ok(app.includes("pendingCompletions"), "DeliveryApp must retain and retry offline completions");
+assert.ok(app.includes("pendingGps"), "DeliveryApp must retain offline GPS captures");
+assert.ok(app.includes("await flushPendingGps()"), "GPS must sync before delivery completion");
+assert.ok(app.includes("state.pendingGps.length"), "Logout must protect unsynchronized GPS captures");
 assert.ok(app.includes("action:'route_manage',op:'list'"), "DeliveryApp must load office-published routes");
 assert.ok(dashboard.includes("async function publishSelectedRoute()"), "Office dashboard must provide route publishing");
 assert.ok(dashboard.includes("stopType==='approved_consumer_gps'"), "Office dashboard must publish only approved GPS stops");
