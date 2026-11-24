@@ -17,19 +17,19 @@ const pendingImport = section('if (action === "import_pending" || action === "im
 assert.ok(!pendingImport.includes("responseData"), "GPS enrichment must not be inserted into the pending import response");
 assert.ok(pendingImport.includes('db.rpc(functionName'), "Pending import must continue to use its atomic database RPC");
 
-const completion = section('if (action === "delivery_completion")', 'if (action === "route_manage")');
+const completion = section('if (action === "delivery_completion")', 'if (action === "locations_manage")');
 assert.ok(completion.includes('user.role !== "delivery"'), "Only delivery accounts may submit completion");
 assert.ok(completion.includes('from("lpg_pending")'), "Completion must verify current booking assignment");
 assert.ok(completion.includes('from("lpg_gps")'), "Completion must verify server-saved GPS");
 assert.ok(completion.includes('from("lpg_delivery_completions")'), "Completion must persist centrally");
 
 const routes = section('if (action === "route_manage")', 'if (action === "delivery_completion")');
-assert.ok(routes.includes('status:"approved"') || routes.includes('status === "approved"'), "Route publication must use approved GPS pins");
+assert.ok(routes.includes('status==="approved"') || routes.includes('status === "approved"'), "Route publication must use approved GPS pins");
 assert.ok(routes.includes('from("lpg_delivery_routes")'), "Route versions must be stored centrally");
 assert.ok(routes.includes('from("lpg_delivery_route_stops")'), "Route stops must be stored centrally");
 assert.ok(routes.includes('from("lpg_pending")'), "Published route stops must be checked against assigned bookings");
 
-const genericDb = section('const { data, error } = await query;', 'return Response.json(\n      { error: "Invalid request"');
+const genericDb = section('const { data, error } = await query;\n\n    if (error)', 'return Response.json(\n      { error: "Invalid request"');
 assert.ok(genericDb.includes('table === "lpg_pending"'), "Delivery pending reads should be scoped for GPS enrichment");
 assert.ok(genericDb.includes('from("lpg_gps")'), "Approved GPS should be joined to the delivery user's own bookings");
 assert.ok(genericDb.includes('return Response.json({ data: responseData }'), "GPS enrichment must be in the generic database response");
