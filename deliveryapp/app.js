@@ -77,12 +77,12 @@ async function completeBooking(r,key,button){
  try{
   if(!navigator.onLine)throw new Error('OFFLINE_QUEUE');
   await flushPendingGps();
-  const result=await api({action:'delivery_completion',op:'save',...record});
+  const gpsQueued=state.pendingGps.some(x=>String(x.booking_key||'')===record.booking_key&&String(x.consumer_no)===record.consumer_no);\n  const result=await api({action:'delivery_completion',op:'save',...record});
   if(!result.success)throw new Error(result.error||'Delivery could not be saved');
   state.done.add(key);
   state.pendingCompletions=state.pendingCompletions.filter(x=>x.booking_key!==record.booking_key);
   persist();render();
-  const note=gpsSaved?'Delivery saved with GPS for office review.':('Delivery saved. GPS not captured: '+(gpsMessage||'location signal was weak')+'. You can capture it later using GPS-only search.');
+  const note=gpsSaved?'Delivery saved with GPS for office review.':(gpsQueued?'Delivery saved. GPS was captured and is waiting to sync.':('Delivery saved. GPS not captured: '+(gpsMessage||'location signal was weak')+'. You can capture it later using GPS-only search.'));
   $('message').textContent=note;
  }catch(err){
   if(err.message==='OFFLINE_QUEUE'||!navigator.onLine){
@@ -100,7 +100,7 @@ async function flushPendingGps(){
  for(const item of queue){
   try{
    await api({action:'gps_capture',...item});
-   state.pendingGps=state.pendingGps.filter(x=>x.booking_key!==item.booking_key);
+   state.pendingGps=state.pendingGps.filter(x=>!(String(x.booking_key||'')===String(item.booking_key||'')&&String(x.consumer_no)===String(item.consumer_no)));
   }catch(err){if(/Session expired|invalid/i.test(err.message))break;else break;}
  }
  persist();
@@ -138,7 +138,7 @@ async function captureGps(r,button,captureMode='delivery_initial_mapping',option
     if(deadline!==null)clearTimeout(deadline);
     if(err)reject(err);else resolve(bestFix);
    };
-   deadline=setTimeout(()=>finish(bestFix?null:new Error('No reliable GPS fix yet. Move to an open area and retry.')),24000);
+   deadline=setTimeout(()=>finish(bestFix?null:new Error('No reliable GPS fix yet. Move to an open area and retry.')),18000);
    try{
     watchId=navigator.geolocation.watchPosition(pos=>{
      const c=pos.coords,acc=Number(c.accuracy);
@@ -149,9 +149,9 @@ async function captureGps(r,button,captureMode='delivery_initial_mapping',option
      button.textContent='Best GPS '+Math.round(bestFix.acc)+' m…';
      if(status)status.textContent='Improving GPS fix · best so far '+Math.round(bestFix.acc)+' m';
      // Stop as soon as the phone supplies a genuinely good fix.
-     if(bestFix.acc<=8)finish();
+     if(bestFix.acc<=10)finish();
     },err=>{
-     if(!bestFix)finish(new Error(err.code===1?'Location permission denied. Allow precise location for this app.':err.code===2?'Phone location is unavailable. Turn on Location and try again.':'GPS is taking too long. Move outdoors and retry.'));
+     if(err.code===1)finish(new Error('Location permission denied. Allow precise location for this app.'));else if(status)status.textContent='Waiting for GPS signal…';
     },{enableHighAccuracy:true,timeout:26000,maximumAge:0});
    }catch(e){finish(e)}
   });
