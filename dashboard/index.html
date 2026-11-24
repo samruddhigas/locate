@@ -6245,7 +6245,7 @@ function compactCard(d, isDone) {
         </div>
         <div class="expand-btns">
           <button class="expand-nav-btn" onclick="navigate('\${esc(d.id)}');event.stopPropagation()">🗺️ Map</button>
-          \${!isDone ? \`<button class="expand-call-btn" onclick="captureDeliveryGPS(APP.deliveries.find(x=>x.id==='\\${esc(d.id)}'),'delivery_initial_mapping');event.stopPropagation()">📍 Capture location only</button>\` : ''}
+          \${!isDone ? \`<button class="expand-call-btn" onclick="captureDeliveryGPS(APP.deliveries.find(x=>x.id==='\${esc(d.id)}'),'delivery_initial_mapping');event.stopPropagation()">📍 Capture location only</button>\` : ''}
           \${d.mobile ? \`<button class="expand-call-btn" onclick="callNum('\${esc(d.mobile)}');event.stopPropagation()">📞 Call</button>\` : ''}
         </div>
       </div>
