@@ -77,7 +77,8 @@ async function completeBooking(r,key,button){
  try{
   if(!navigator.onLine)throw new Error('OFFLINE_QUEUE');
   await flushPendingGps();
-  const gpsQueued=state.pendingGps.some(x=>String(x.booking_key||'')===record.booking_key&&String(x.consumer_no)===record.consumer_no);\n  const result=await api({action:'delivery_completion',op:'save',...record});
+  const gpsQueued=state.pendingGps.some(x=>String(x.booking_key||'')===record.booking_key&&String(x.consumer_no)===record.consumer_no);
+  const result=await api({action:'delivery_completion',op:'save',...record});
   if(!result.success)throw new Error(result.error||'Delivery could not be saved');
   state.done.add(key);
   state.pendingCompletions=state.pendingCompletions.filter(x=>x.booking_key!==record.booking_key);
@@ -111,7 +112,6 @@ async function flushPendingCompletions(){
  if(!state.pendingCompletions.length){persist();return}
  const queue=[...state.pendingCompletions];
  for(const item of queue){
-  if(state.pendingGps.some(g=>String(g.booking_key)===String(item.booking_key)))continue;
   try{
    const result=await api({action:'delivery_completion',op:'save',...item});
    if(result.success)state.pendingCompletions=state.pendingCompletions.filter(x=>x.booking_key!==item.booking_key);
