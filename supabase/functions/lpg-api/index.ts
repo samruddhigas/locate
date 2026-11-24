@@ -918,7 +918,7 @@ Deno.serve(async (req) => {
       return Response.json({ data: data || [] }, { headers: cors });
     }
 
-    // GPS capture action: authenticated delivery devices submit a stable set of precise readings
+    // GPS capture action: authenticated delivery devices submit the best fresh high-accuracy fix
     // and a separately confirmed entrance pin; all registry access remains server-side.
     if (action === "gps_capture") {
       if (!["admin", "staff", "delivery"].includes(user.role)) {
@@ -980,7 +980,7 @@ Deno.serve(async (req) => {
       const pinSavedLat = keepNew ? lat : (Number(existing?.pin_lat) || Number(existing?.lat) || lat);
       const pinSavedLng = keepNew ? lng : (Number(existing?.pin_lng) || Number(existing?.lng) || lng);
       const captureMode = String(body.capture_mode || "initial_mapping").slice(0, 40);
-      const captureSource = captureMode === "delivery_after_mark_delivered" ? "DELIVERY_BOY_DELIVERY" : "DELIVERY_BOY_INITIAL_MAPPING";
+      const captureSource = captureMode === "delivery_after_mark_delivered" ? "DELIVERY_BOY_DELIVERY" : captureMode === "delivery_manual_lookup" ? "DELIVERY_BOY_MANUAL_LOOKUP" : "DELIVERY_BOY_INITIAL_MAPPING";
       const capturedAt = new Date().toISOString();
       const row = {
         consumer_no: consumerNo, lat: newLat, lng: newLng, acc: bestAcc,
