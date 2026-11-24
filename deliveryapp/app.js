@@ -77,9 +77,10 @@ async function flushPendingGps(){
 async function flushPendingCompletions(){
  if(!state.token||!navigator.onLine)return;
  await flushPendingGps();
- if(state.pendingGps.length||!state.pendingCompletions.length){persist();return}
+ if(!state.pendingCompletions.length){persist();return}
  const queue=[...state.pendingCompletions];
  for(const item of queue){
+  if(state.pendingGps.some(g=>String(g.booking_key)===String(item.booking_key)))continue;
   try{
    const result=await api({action:'delivery_completion',op:'save',...item});
    if(result.success)state.pendingCompletions=state.pendingCompletions.filter(x=>x.booking_key!==item.booking_key);
