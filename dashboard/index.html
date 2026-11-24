@@ -8604,7 +8604,7 @@ async function buildRouteOptimizer() {
     if (!byDM.has(dm)) byDM.set(dm, []);
     if (!fallbackByDM.has(dm)) fallbackByDM.set(dm, new Map());
     const gps = STATE.consumerGPS[p.consumerNo];
-    const gpsIsApproved = gps && (gps.status === 'approved' || gps.source === 'approved' || gps.cloudSynced === true) &&
+    const gpsIsApproved = gps && (gps.status === 'approved' || gps.source === 'approved' || gps.source === 'staff_pin') &&
       Number.isFinite(Number(gps.lat)) && Number(gps.lat) >= -90 && Number(gps.lat) <= 90 &&
       Number.isFinite(Number(gps.lng)) && Number(gps.lng) >= -180 && Number(gps.lng) <= 180;
     if (gpsIsApproved) {
