@@ -545,6 +545,111 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Office-published, date-specific route sequences. Only approved customer GPS pins
+    // can be published; area-centre estimates remain planning hints, never delivery stops.
+    if (action === "route_manage") {
+      const op = String(body.op || "");
+      const validDate = (v: unknown) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) &&
+        !Number.isNaN(Date.parse(v)) && new Date(v).toISOString().slice(0,10) === v;
+      const routeDate = String(body.route_date || new Date().toISOString().slice(0,10));
+      if (!validDate(routeDate)) return Response.json({error:"Route date must use YYYY-MM-DD"}, {status:400,headers:cors});
+
+      if (op === "list") {
+        let deliveryMan = user.role === "delivery" ? user.name : String(body.delivery_man || "");
+        if (user.role !== "delivery" && !["admin","staff"].includes(user.role))
+          return Response.json({error:"Route access denied"}, {status:403,headers:cors});
+        let routeQuery = db.from("lpg_delivery_routes").select("*")
+          .eq("route_date",routeDate).eq("status","published")
+          .order("published_at",{ascending:false}).limit(1);
+        if (deliveryMan) routeQuery = routeQuery.eq("delivery_man",deliveryMan);
+        const {data:routes,error:routeError}=await routeQuery;
+        if (routeError) return Response.json({error:"Could not load published route"}, {status:503,headers:cors});
+        const routeRow=routes?.[0]||null;
+        if (!routeRow) return Response.json({route:null,stops:[]},{headers:cors});
+        const {data:stops,error:stopsError}=await db.from("lpg_delivery_route_stops")
+          .select("booking_key,consumer_no,stop_order,lat,lng,dist_from_prev_km")
+          .eq("route_id",routeRow.id).order("stop_order",{ascending:true});
+        if (stopsError) return Response.json({error:"Could not load route stops"}, {status:503,headers:cors});
+        return Response.json({route:routeRow,stops:stops||[]},{headers:cors});
+      }
+
+      if (op !== "publish") return Response.json({error:"Unsupported route operation"}, {status:400,headers:cors});
+      if (!["admin","staff"].includes(user.role))
+        return Response.json({error:"Office admin or staff permission required to publish routes"}, {status:403,headers:cors});
+      const deliveryMan=String(body.delivery_man||"").trim();
+      const inputStops=Array.isArray(body.stops)?body.stops:[];
+      if (!deliveryMan || deliveryMan.length>100 || inputStops.length<1 || inputStops.length>500)
+        return Response.json({error:"Choose a delivery boy and provide 1–500 approved GPS stops"}, {status:400,headers:cors});
+      const {data:deliveryUser,error:deliveryUserError}=await db.from("lpg_users")
+        .select("name").eq("name",deliveryMan).eq("role","delivery").eq("active",true).maybeSingle();
+      if (deliveryUserError) return Response.json({error:"Could not verify delivery account"}, {status:503,headers:cors});
+      if (!deliveryUser) return Response.json({error:"Selected delivery boy does not have an active delivery account"}, {status:400,headers:cors});
+
+      const seenKeys=new Set<string>();
+      const requested=inputStops.map((stop:any,index:number)=>({
+        booking_key:String(stop?.booking_key||"").trim(),
+        consumer_no:String(stop?.consumer_no||"").trim(),
+        stop_order:Number(stop?.stop_order||index+1)
+      }));
+      if (requested.some((s:any)=>!s.booking_key||s.booking_key.length>120||!s.consumer_no||s.consumer_no.length>40||
+          !Number.isInteger(s.stop_order)||s.stop_order<1||s.stop_order>500||seenKeys.has(s.booking_key)||
+          (seenKeys.add(s.booking_key),false))) {
+        return Response.json({error:"Route contains invalid or duplicate booking stops"}, {status:400,headers:cors});
+      }
+      requested.sort((a:any,b:any)=>a.stop_order-b.stop_order);
+      if (new Set(requested.map((s:any)=>s.stop_order)).size!==requested.length)
+        return Response.json({error:"Route stop numbers must be unique"}, {status:400,headers:cors});
+
+      const consumerNos=[...new Set(requested.map((s:any)=>s.consumer_no))];
+      const {data:assignments,error:assignmentError}=await db.from("lpg_pending")
+        .select("id,order_no,consumer_no,qty,delivery_man")
+        .eq("delivery_man",deliveryMan).in("consumer_no",consumerNos);
+      if (assignmentError) return Response.json({error:"Could not verify pending assignments"}, {status:503,headers:cors});
+      const {data:gpsRows,error:gpsError}=await db.from("lpg_gps")
+        .select("consumer_no,lat,lng,pin_lat,pin_lng,status")
+        .in("consumer_no",consumerNos).eq("status","approved");
+      if (gpsError) return Response.json({error:"Could not verify approved customer GPS pins"}, {status:503,headers:cors});
+      const gpsByConsumer=new Map((gpsRows||[]).map((g:any)=>[String(g.consumer_no),g]));
+      const routeStops:any[]=[];
+      for(const stop of requested){
+        const assigned=(assignments||[]).find((r:any)=>String(r.consumer_no)===stop.consumer_no &&
+          (String(r.order_no||"")===stop.booking_key || String(r.id||"")===stop.booking_key));
+        if(!assigned) return Response.json({error:"Booking "+stop.booking_key+" is not assigned to "+deliveryMan}, {status:409,headers:cors});
+        const gps:any=gpsByConsumer.get(stop.consumer_no);
+        const lat=Number(gps?.pin_lat??gps?.lat),lng=Number(gps?.pin_lng??gps?.lng);
+        if(!gps||!Number.isFinite(lat)||lat < -90||lat>90||!Number.isFinite(lng)||lng < -180||lng>180)
+          return Response.json({error:"Consumer "+stop.consumer_no+" does not have an approved GPS pin"}, {status:409,headers:cors});
+        routeStops.push({...stop,lat,lng});
+      }
+
+      const {data:depot,error:depotError}=await db.from("lpg_locations")
+        .select("lat,lng").eq("is_default",true).maybeSingle();
+      if(depotError||!depot||!Number.isFinite(Number(depot.lat))||!Number.isFinite(Number(depot.lng)))
+        return Response.json({error:"A shared default depot location must be configured before publishing routes"}, {status:409,headers:cors});
+      const km=(a:any,b:any)=>{const rad=Math.PI/180,dLat=(b.lat-a.lat)*rad,dLng=(b.lng-a.lng)*rad;
+        const x=Math.sin(dLat/2)**2+Math.cos(a.lat*rad)*Math.cos(b.lat*rad)*Math.sin(dLng/2)**2;
+        return 6371*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));};
+      let previous={lat:Number(depot.lat),lng:Number(depot.lng)},total=0;
+      const stopRows=routeStops.map((stop:any)=>{const distance=km(previous,stop);previous={lat:stop.lat,lng:stop.lng};total+=distance;
+        return {booking_key:stop.booking_key,consumer_no:stop.consumer_no,stop_order:stop.stop_order,lat:stop.lat,lng:stop.lng,dist_from_prev_km:Number(distance.toFixed(3))};});
+      total+=km(previous,{lat:Number(depot.lat),lng:Number(depot.lng)});
+      const routeVersion=crypto.randomUUID();
+      const {data:newRoute,error:createRouteError}=await db.from("lpg_delivery_routes").insert({
+        route_date:routeDate,delivery_man:deliveryMan,route_version:routeVersion,status:"published",
+        stop_count:stopRows.length,total_distance_km:Number(total.toFixed(2)),published_by:user.name
+      }).select("*").single();
+      if(createRouteError||!newRoute) return Response.json({error:"Could not create route version"}, {status:503,headers:cors});
+      const {error:insertStopsError}=await db.from("lpg_delivery_route_stops").insert(stopRows.map((s:any)=>({...s,route_id:newRoute.id})));
+      if(insertStopsError){
+        await db.from("lpg_delivery_routes").delete().eq("id",newRoute.id);
+        return Response.json({error:"Route stops could not be saved; previous route remains active"}, {status:503,headers:cors});
+      }
+      const {error:supersedeError}=await db.from("lpg_delivery_routes").update({status:"superseded"})
+        .eq("route_date",routeDate).eq("delivery_man",deliveryMan).eq("status","published").neq("id",newRoute.id);
+      if(supersedeError) return Response.json({error:"New route saved, but previous route could not be superseded. Refresh route status before republishing."}, {status:503,headers:cors});
+      return Response.json({success:true,route:newRoute,stops:stopRows,total_distance_km:Number(total.toFixed(2))},{headers:cors});
+    }
+
     // Server-authoritative delivery completion. A completion is accepted only when
     // the signed-in delivery user owns the currently assigned booking and a valid
     // GPS record already exists for that consumer. The booking key makes retries idempotent.
