@@ -606,10 +606,10 @@ Deno.serve(async (req) => {
         .eq("delivery_man",deliveryMan).in("consumer_no",consumerNos);
       if (assignmentError) return Response.json({error:"Could not verify pending assignments"}, {status:503,headers:cors});
       const {data:gpsRows,error:gpsError}=await db.from("lpg_gps")
-        .select("consumer_no,lat,lng,pin_lat,pin_lng,status")
-        .in("consumer_no",consumerNos).eq("status","approved");
+        .select("consumer_no,lat,lng,pin_lat,pin_lng,status,source")
+        .in("consumer_no",consumerNos);
       if (gpsError) return Response.json({error:"Could not verify approved customer GPS pins"}, {status:503,headers:cors});
-      const gpsByConsumer=new Map((gpsRows||[]).map((g:any)=>[String(g.consumer_no),g]));
+      const gpsByConsumer=new Map((gpsRows||[]).filter((g:any)=>g.status==="approved"||g.source==="staff_pin").map((g:any)=>[String(g.consumer_no),g]));
       const routeStops:any[]=[];
       for(const stop of requested){
         const assigned=(assignments||[]).find((r:any)=>String(r.consumer_no)===stop.consumer_no &&
@@ -1185,13 +1185,13 @@ Deno.serve(async (req) => {
       const consumerNos = [...new Set(data.map((row: any) => String(row.consumer_no || "").trim()).filter(Boolean))];
       if (consumerNos.length) {
         const { data: gpsRows, error: gpsReadError } = await db.from("lpg_gps")
-          .select("consumer_no,lat,lng,pin_lat,pin_lng,acc,status")
+          .select("consumer_no,lat,lng,pin_lat,pin_lng,acc,status,source")
           .in("consumer_no", consumerNos);
         if (!gpsReadError) {
           const gpsByConsumer = new Map((gpsRows || []).map((g: any) => [String(g.consumer_no), g]));
           responseData = data.map((row: any) => {
             const gps = gpsByConsumer.get(String(row.consumer_no || ""));
-            const approved = gps?.status === "approved";
+            const approved = gps?.status === "approved" || gps?.source === "staff_pin";
             return {
               ...row,
               lat: approved ? Number(gps.pin_lat ?? gps.lat) : null,
