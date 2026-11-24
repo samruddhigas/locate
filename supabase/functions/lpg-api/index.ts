@@ -1179,32 +1179,7 @@ Deno.serve(async (req) => {
         );
       }
 
-      let responseData = data;
-    // Delivery accounts receive only approved GPS pins for the consumers in their own filtered booking page.
-    if (user.role === "delivery" && table === "lpg_pending" && op === "select" && Array.isArray(data) && data.length) {
-      const consumerNos = [...new Set(data.map((row: any) => String(row.consumer_no || "").trim()).filter(Boolean))];
-      if (consumerNos.length) {
-        const { data: gpsRows, error: gpsReadError } = await db.from("lpg_gps")
-          .select("consumer_no,lat,lng,pin_lat,pin_lng,acc,status,source")
-          .in("consumer_no", consumerNos);
-        if (!gpsReadError) {
-          const gpsByConsumer = new Map((gpsRows || []).map((g: any) => [String(g.consumer_no), g]));
-          responseData = data.map((row: any) => {
-            const gps = gpsByConsumer.get(String(row.consumer_no || ""));
-            const approved = gps?.status === "approved" || gps?.source === "staff_pin";
-            return {
-              ...row,
-              lat: approved ? Number(gps.pin_lat ?? gps.lat) : null,
-              lng: approved ? Number(gps.pin_lng ?? gps.lng) : null,
-              gps_status: gps?.status || null,
-              gps_accuracy: gps?.acc ?? null
-            };
-          });
-        }
-      }
-    }
-
-    return Response.json({ data: responseData }, { headers: cors });
+      return Response.json({ data }, { headers: cors });
     }
 
     // Admin-only delivery archive operation.
@@ -1658,7 +1633,31 @@ Deno.serve(async (req) => {
       );
     }
 
-    return Response.json({ data }, { headers: cors });
+    let responseData = data;
+    // Return only approved or office-pinned GPS for the delivery boy's own filtered bookings.
+    if (user.role === "delivery" && table === "lpg_pending" && op === "select" && Array.isArray(data) && data.length) {
+      const consumerNos = [...new Set(data.map((row: any) => String(row.consumer_no || "").trim()).filter(Boolean))];
+      if (consumerNos.length) {
+        const { data: gpsRows, error: gpsReadError } = await db.from("lpg_gps")
+          .select("consumer_no,lat,lng,pin_lat,pin_lng,acc,status,source")
+          .in("consumer_no", consumerNos);
+        if (!gpsReadError) {
+          const gpsByConsumer = new Map((gpsRows || []).map((g: any) => [String(g.consumer_no), g]));
+          responseData = data.map((row: any) => {
+            const gps = gpsByConsumer.get(String(row.consumer_no || ""));
+            const approved = gps?.status === "approved" || gps?.source === "staff_pin";
+            return {
+              ...row,
+              lat: approved ? Number(gps.pin_lat ?? gps.lat) : null,
+              lng: approved ? Number(gps.pin_lng ?? gps.lng) : null,
+              gps_status: gps?.status || null,
+              gps_accuracy: gps?.acc ?? null
+            };
+          });
+        }
+      }
+    }
+    return Response.json({ data: responseData }, { headers: cors });
   } catch {
     return Response.json(
       { error: "Invalid request" },
