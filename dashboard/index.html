@@ -1,4 +1,4 @@
-<!-- Samruddhi Gas Agency Dashboard: latest audited source build v35, reviewed against active lpg-api v29. -->
+<!-- Samruddhi Gas Agency Dashboard: latest audited source build v36, connected to active lpg-api v46; consumer GPS capture reliability updated. -->
 <!-- This file does not include service-role credentials. Live DB workflows still require in-browser verification. -->
 <!-- Audit notes: fixed numeric keyset paging, mutation result checks, report source/XSS, GPS legacy review policy, role gates and secure consumer capture URL. -->
 <!DOCTYPE html>
@@ -8,7 +8,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<title>Samruddhi Gas Agency (HP Gas) — Dashboard v35</title>
+<title>Samruddhi Gas Agency (HP Gas) — Dashboard v36</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -972,7 +972,7 @@ body.delivery-restricted .logged-in-bar #loggedInRole { display:none !important;
 </style>
 </head>
 <body>
-<div style="padding:10px 16px;background:#fff3cd;color:#664d03;border-bottom:1px solid #ffecb5;font:600 13px system-ui">API-ONLY DASHBOARD · Build v35 · Connected only to the NEW Supabase project. Browser database requests use the authenticated lpg-api; no service-role key is stored here. PIN-based live login and database read/write testing are still required before production use. Backup/Restore and some advanced security controls are not available in the current deployment and are disabled below.</div>
+<div style="padding:10px 16px;background:#fff3cd;color:#664d03;border-bottom:1px solid #ffecb5;font:600 13px system-ui">API-ONLY DASHBOARD · Build v36 · Connected only to the NEW Supabase project; GPS capture accepts best fresh fix up to 30 m. Browser database requests use the authenticated lpg-api; no service-role key is stored here. PIN-based live login and database read/write testing are still required before production use. Backup/Restore and some advanced security controls are not available in the current deployment and are disabled below.</div>
 
 <!-- ================================================================
      LOGIN OVERLAY
