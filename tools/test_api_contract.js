@@ -42,6 +42,11 @@ const locations = section('if (action === "locations_manage")', 'if (action === 
 assert.ok(locations.includes('["create","update"].includes(op)'), "Set-default/deactivate must not require create/update fields");
 assert.ok(api.includes("Too many failed attempts"), "Login rate limiting must remain enabled");
 assert.ok(api.includes("Each staff member must have a different PIN"), "New staff accounts must not reuse another user's PIN");
+assert.ok(api.includes('name: "PBKDF2"'), "New PIN hashes must use PBKDF2");
+assert.ok(api.includes("310000"), "PIN hashing must use a high iteration count");
+assert.ok(api.includes("hashPinLegacy"), "Existing PINs must remain verifiable during safe hash migration");
+assert.ok(api.includes("pin_fingerprint"), "PIN reuse checks must cover legacy and upgraded accounts");
+assert.ok(api.includes("PIN security upgrade could not be saved"), "Legacy PIN hashes must upgrade on successful login");
 
 assert.ok(app.includes("action:'delivery_completion',op:'save'"), "DeliveryApp must save completion centrally");
 assert.ok(app.includes("pendingCompletions"), "DeliveryApp must retain and retry offline completions");
