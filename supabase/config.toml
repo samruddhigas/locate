@@ -1,0 +1,2 @@
+[functions.lpg-api]
+verify_jwt = false
