@@ -8573,53 +8573,75 @@ async function buildRouteOptimizer() {
   const statusEl = document.getElementById('routeStatus');
   if (!STATE.pending.length) { statusEl.textContent = '⚠️ No pending deliveries loaded'; return; }
 
-  // Use saved pin coords — no geocoding needed
   let depot = null;
   const savedPin = localStorage.getItem('depot_pin');
   if (savedPin) {
-    try { const d = JSON.parse(savedPin); depot = { lat: d.lat, lng: d.lng, name: d.label || 'Depot' }; } catch(e) {}
+    try { const d = JSON.parse(savedPin); if (Number.isFinite(Number(d.lat)) && Number.isFinite(Number(d.lng))) depot = { lat:Number(d.lat), lng:Number(d.lng), name:d.label || 'Depot' }; } catch(e) {}
   }
+  if (!depot) { statusEl.textContent = '⚠️ Set depot location first — click 📍 Set Depot'; return; }
 
-  if (!depot) {
-    statusEl.textContent = '⚠️ Set depot location first — click 📍 Set Depot';
-    return;
-  }
+  const byDM = new Map();
+  const fallbackByDM = new Map();
+  const missingAreas = new Set();
+  let gpsStopCount = 0;
 
-  const areas = [...new Set(STATE.pending.map(p => String(p.area || '').trim()).filter(Boolean))].sort();
-  statusEl.textContent = areas.length ? '⏳ Geocoding delivery areas…' : '⚠️ No delivery areas found; GPS pins only will be used.';
-
-  // Geocode all areas (with small delay to respect Nominatim rate limit)
-  for (let i = 0; i < areas.length; i++) {
-    statusEl.textContent = `⏳ Geocoding areas… ${i+1}/${areas.length}`;
-    await geocodeArea(areas[i]);
-    await new Promise(r => setTimeout(r, 1100)); // respect Nominatim public service usage guidance
-  }
-
-  // Group pending by DM → by area, but use consumer GPS if available
-  const byDM = {};
+  // Use only approved/cloud-synchronized consumer pins for stop-level routing.
+  // Unapproved captures remain in the office review queue and are not route inputs.
   STATE.pending.forEach(p => {
-    const dm   = p.deliveryMan || '(Unassigned)';
-    const area = p.area || '(Unknown)';
-    if (!byDM[dm]) byDM[dm] = {};
-    if (!byDM[dm][area]) byDM[dm][area] = { area, consumers: [], coords: _areaCoords[area]||null };
-    // Attach per-consumer GPS if known
+    const dm = p.deliveryMan || '(Unassigned)';
+    if (!byDM.has(dm)) byDM.set(dm, []);
+    if (!fallbackByDM.has(dm)) fallbackByDM.set(dm, new Map());
     const gps = STATE.consumerGPS[p.consumerNo];
-    if (gps) p._gps = gps;
-    byDM[dm][area].consumers.push(p);
+    const gpsIsApproved = gps && (gps.status === 'approved' || gps.source === 'approved' || gps.cloudSynced === true) &&
+      Number.isFinite(Number(gps.lat)) && Number(gps.lat) >= -90 && Number(gps.lat) <= 90 &&
+      Number.isFinite(Number(gps.lng)) && Number(gps.lng) >= -180 && Number(gps.lng) <= 180;
+    if (gpsIsApproved) {
+      byDM.get(dm).push({
+        area:p.area || 'GPS customer stop',
+        consumers:[p],
+        lat:Number(gps.lat), lng:Number(gps.lng),
+        coords:{lat:Number(gps.lat),lng:Number(gps.lng)},
+        stopType:'approved_consumer_gps'
+      });
+      gpsStopCount++;
+      return;
+    }
+    const area = String(p.area || '(Unknown area)').trim();
+    missingAreas.add(area);
+    const areaMap = fallbackByDM.get(dm);
+    if (!areaMap.has(area)) areaMap.set(area,{area,consumers:[],coords:null,lat:null,lng:null,stopType:'area_estimate'});
+    areaMap.get(area).consumers.push(p);
   });
 
-  // Build optimized routes per DM
-  _routeData = Object.entries(byDM).map(([dm, areaMap]) => {
-    const stops = Object.values(areaMap).filter(s => s.coords);
-    const optimized = optimizeRoute(depot, stops);
-    const dist = totalDist(depot, optimized);
-    const totalOrders = Object.values(areaMap).reduce((s,a) => s + a.consumers.length, 0);
-    const totalQty    = Object.values(areaMap).reduce((s,a) => s + a.consumers.reduce((q,c) => q+(c.qty||1), 0), 0);
-    return { dm, optimized, dist: dist.toFixed(1), totalOrders, totalQty,
-             noCoords: Object.values(areaMap).filter(s => !s.coords).map(s => s.area) };
-  }).sort((a,b) => b.totalOrders - a.totalOrders);
+  // Geocode only the remaining unpinned areas, never every customer address.
+  const areas = [...missingAreas].filter(area => !_areaCoords[area]).sort();
+  for (let i=0;i<areas.length;i++) {
+    statusEl.textContent = '⏳ Finding approximate locations for unpinned areas… '+(i+1)+'/'+areas.length;
+    await geocodeArea(areas[i]);
+    await new Promise(r=>setTimeout(r,1100));
+  }
 
-  statusEl.textContent = `✅ Area-level route estimates prepared for ${_routeData.length} delivery men. This is not road navigation or an office-approved customer stop sequence.`;
+  _routeData = [...byDM.entries()].map(([dm, gpsStops]) => {
+    const areaStops = [...fallbackByDM.get(dm).values()].map(stop => {
+      const coords = _areaCoords[stop.area] || null;
+      return {...stop,coords,lat:coords?.lat ?? null,lng:coords?.lng ?? null};
+    });
+    const stops = [...gpsStops,...areaStops.filter(stop => stop.coords && Number.isFinite(Number(stop.lat)) && Number.isFinite(Number(stop.lng)))];
+    const optimized = optimizeRoute(depot,stops);
+    const dist = totalDist(depot,optimized);
+    const allStops = [...gpsStops,...areaStops];
+    const totalOrders = allStops.reduce((sum,stop)=>sum+stop.consumers.length,0);
+    const totalQty = allStops.reduce((sum,stop)=>sum+stop.consumers.reduce((q,c)=>q+(Number(c.qty)||1),0),0);
+    return {
+      dm,optimized,dist:Number.isFinite(dist)?dist.toFixed(1):'0.0',totalOrders,totalQty,
+      noCoords:areaStops.filter(stop=>!stop.coords).map(stop=>stop.area),
+      gpsStops:gpsStops.length,areaEstimateStops:areaStops.filter(stop=>!!stop.coords).length
+    };
+  }).sort((a,b)=>b.totalOrders-a.totalOrders);
+
+  const totalGps = _routeData.reduce((n,r)=>n+r.gpsStops,0);
+  const totalArea = _routeData.reduce((n,r)=>n+r.areaEstimateStops,0);
+  statusEl.textContent = '✅ Approximate routes prepared for '+_routeData.length+' delivery boys · '+totalGps+' approved customer GPS stops · '+totalArea+' area-estimate stops. Straight-line distance only; not road navigation or yet published to DeliveryApp.';
   renderRouteMap(depot);
   renderRouteSummaryCards();
   renderRouteTables();
