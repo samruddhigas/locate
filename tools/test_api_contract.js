@@ -80,7 +80,7 @@ assert.ok(dashboard.includes("navigator.geolocation.watchPosition(pos=>"), "Embe
 assert.ok(dashboard.includes("if(acc<=10)finish()"), "Embedded DeliveryApp must stop early for a 10m GPS fix");
 assert.ok(dashboard.includes("APP.pendingGps"), "Embedded DeliveryApp must persist and sync offline GPS captures");
 assert.ok(dashboard.includes("async function searchGpsOnlyConsumers()"), "Embedded DeliveryApp must support GPS-only consumer search");
-assert.ok(dashboard.includes("captureMode ==="), "Embedded GPS capture source must distinguish capture modes");
+assert.ok(dashboard.includes("'delivery_manual_lookup'"), "Embedded GPS-only search must use the dedicated manual lookup permission");
 assert.ok(api.includes('DELIVERY_BOY_MANUAL_LOOKUP'), "Manual GPS-only captures must be clearly labeled in the GPS registry");
 
 console.log("API contract tests passed: GPS gate, central completion, offline queue, approved GPS routes, import isolation, and security guards.");
