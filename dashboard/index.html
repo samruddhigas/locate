@@ -6102,7 +6102,7 @@ function updateStats() {
   const done = APP.deliveries.filter(d => d.done);
   const tot  = APP.deliveries.length;
   const cylTot = pend.reduce((s,d) => s+(d.qty||1), 0);
-  const gpsCount = done.filter(d => d.gpsAt).length;
+  const gpsCount = APP.deliveries.filter(d => d.gpsAt).length;
 
   document.getElementById('statPend').textContent = pend.length;
   document.getElementById('statDone').textContent = done.length;
@@ -6245,6 +6245,7 @@ function compactCard(d, isDone) {
         </div>
         <div class="expand-btns">
           <button class="expand-nav-btn" onclick="navigate('\${esc(d.id)}');event.stopPropagation()">🗺️ Map</button>
+          \${!isDone ? \`<button class="expand-call-btn" onclick="captureDeliveryGPS(APP.deliveries.find(x=>x.id==='\\${esc(d.id)}'),'delivery_initial_mapping');event.stopPropagation()">📍 Capture location only</button>\` : ''}
           \${d.mobile ? \`<button class="expand-call-btn" onclick="callNum('\${esc(d.mobile)}');event.stopPropagation()">📞 Call</button>\` : ''}
         </div>
       </div>
@@ -6306,11 +6307,11 @@ function undoDone(id) {
 // ================================================================
 // GPS SAVE & AVERAGING
 // ================================================================
-let _deliveryGpsWatch=null,_deliveryGpsSamples=[],_deliveryGpsBest=null,_deliveryGpsCurrent=null,_deliveryGpsMap=null,_deliveryGpsMarker=null,_deliveryGpsSatellite=null,_deliveryGpsStreet=null,_deliveryGpsLayer='satellite';
+let _deliveryGpsWatch=null,_deliveryGpsSamples=[],_deliveryGpsBest=null,_deliveryGpsCurrent=null,_deliveryGpsCaptureMode='delivery_after_mark_delivered',_deliveryGpsMap=null,_deliveryGpsMarker=null,_deliveryGpsSatellite=null,_deliveryGpsStreet=null,_deliveryGpsLayer='satellite';
 function deliveryGpsDistance(a,b,c,d){const R=6371000,x=(c-a)*Math.PI/180,y=(d-b)*Math.PI/180,h=Math.sin(x/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)**2;return 2*R*Math.asin(Math.sqrt(h));}
-async function captureDeliveryGPS(d) {
+async function captureDeliveryGPS(d, captureMode='delivery_after_mark_delivered') {
   if (!navigator.geolocation || !d?.consumerNo) return;
-  _deliveryGpsCurrent=d;_deliveryGpsSamples=[];_deliveryGpsBest=null;
+  _deliveryGpsCurrent=d;_deliveryGpsSamples=[];_deliveryGpsBest=null;_deliveryGpsCaptureMode=captureMode;
   toast('📍 GPS checking · कृपया स्थिर थांबा','#2563eb');
   _deliveryGpsWatch=navigator.geolocation.watchPosition(pos=>{
     const c=pos.coords;if(!Number.isFinite(c.accuracy)||c.accuracy>5||!Number.isFinite(c.latitude)||!Number.isFinite(c.longitude))return;
@@ -6336,7 +6337,7 @@ function setDeliveryGpsLayer(which){if(!_deliveryGpsMap)return;if(_deliveryGpsLa
 async function saveDeliveryGpsPin(){
   if(!_deliveryGpsCurrent||!_deliveryGpsBest||!_deliveryGpsMarker)return;
   const btn=document.getElementById('deliveryGpsPinSave');btn.disabled=true;btn.textContent='Saving…';const p=_deliveryGpsMarker.getLatLng(),d=_deliveryGpsCurrent,best=_deliveryGpsBest;
-  try{await newProjectApiPost({action:'gps_capture',consumer_no:d.consumerNo,raw_lat:best.lat,raw_lng:best.lng,pin_lat:p.lat,pin_lng:p.lng,lat:p.lat,lng:p.lng,acc:best.acc,readings:_deliveryGpsSamples.slice(-5),capture_mode:'delivery_after_mark_delivered'},DELIVERY_SESSION_TOKEN);
+  try{await newProjectApiPost({action:'gps_capture',consumer_no:d.consumerNo,raw_lat:best.lat,raw_lng:best.lng,pin_lat:p.lat,pin_lng:p.lng,lat:p.lat,lng:p.lng,acc:best.acc,readings:_deliveryGpsSamples.slice(-5),capture_mode:_deliveryGpsCaptureMode},DELIVERY_SESSION_TOKEN);
     d.lat=p.lat;d.lng=p.lng;d.gpsAt=new Date().toISOString();d.gpsAccuracy=best.acc;save();updateStats();document.getElementById('deliveryGpsPinOverlay').classList.remove('open');toast('📍 Entrance location saved · लोकेशन नोंदविले');
   }catch(e){toast('⚠️ GPS save failed · '+e.message,'#b45309');}finally{btn.disabled=false;btn.textContent='Confirm & Save';}
 }
