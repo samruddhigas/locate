@@ -47,6 +47,11 @@ assert.ok(api.includes("310000"), "PIN hashing must use a high iteration count")
 assert.ok(api.includes("hashPinLegacy"), "Existing PINs must remain verifiable during safe hash migration");
 assert.ok(api.includes("pin_fingerprint"), "PIN reuse checks must cover legacy and upgraded accounts");
 assert.ok(api.includes("PIN security upgrade could not be saved"), "Legacy PIN hashes must upgrade on successful login");
+const userManagement = section('if (action === "users_manage")', 'if (action === "gps_search_consumers")');
+assert.ok(userManagement.includes('op === "list"'), "User list must be returned through the authenticated API");
+assert.ok(userManagement.includes('op === "reset_pin"'), "Admin must be able to reset an existing user's PIN");
+assert.ok(userManagement.includes('op === "set_active"'), "Admin must be able to enable or disable user accounts");
+assert.ok(!dashboard.includes("DB._client.table('lpg_users')"), "Dashboard must not bypass protected user management API");
 
 assert.ok(app.includes("action:'delivery_completion',op:'save'"), "DeliveryApp must save completion centrally");
 assert.ok(app.includes("pendingCompletions"), "DeliveryApp must retain and retry offline completions");
