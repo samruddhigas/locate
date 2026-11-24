@@ -6276,12 +6276,15 @@ function toggleExpand(id) {
 function markDone(id) {
   const d = APP.deliveries.find(x => x.id === id);
   if (!d || d.done) return;
+  // Require a saved customer GPS pin before confirming delivery.
+  if (!d.gpsAt && !(d.lat != null && d.lng != null && Number.isFinite(Number(d.lat)) && Number.isFinite(Number(d.lng))) {
+    toast('📍 GPS required first · capture and save the customer entrance location','#b45309');
+    captureDeliveryGPS(d, 'delivery_after_mark_delivered');
+    return;
+  }
 
   d.done   = true;
   d.doneAt = new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
-
-  // Collect repeated high-accuracy fixes after delivery; do not block delivery confirmation.
-  captureDeliveryGPS(d);
 
   save();
   toast('✅ Delivered · झाले!');
