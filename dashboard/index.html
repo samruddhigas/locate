@@ -6908,13 +6908,13 @@ async function saveNewUser() {
 }
 
 async function loadUserLists() {
-  if (!DB._client) return;
+  if (!AUTH?.token || AUTH.role !== 'admin') return;
   try {
-    const { data } = await DB._client.table('lpg_users').select('*').order('role').order('name');
-    if (!data) return;
-    const staff    = data.filter(u => u.role !== 'delivery');
+    const result = await newProjectApiPost({action:'users_manage',op:'list'},AUTH.token);
+    const data = Array.isArray(result.data) ? result.data : [];
+    const staff = data.filter(u => u.role !== 'delivery');
     const delivery = data.filter(u => u.role === 'delivery');
-    document.getElementById('staffList').innerHTML    = renderUserList(staff);
+    document.getElementById('staffList').innerHTML = renderUserList(staff);
     document.getElementById('deliveryList').innerHTML = renderUserList(delivery);
     bindUserListActions();
   } catch(e) { console.warn('loadUserLists error:', e); }
@@ -6939,22 +6939,17 @@ function bindUserListActions() {
 
 async function resetUserPin(name, role) {
   const newPin = prompt(`Enter new 4–8 digit PIN for ${name}:`);
-  if (!newPin || !/^\d{4,8}$/.test(newPin)) {
-    alert('PIN must contain 4–8 digits'); return;
-  }
+  if (!newPin || !/^\\d{4,8}$/.test(newPin)) { alert('PIN must contain 4–8 digits'); return; }
   try {
-    const hash = await hashPin(newPin);
-    const { error } = await DB._client.table('lpg_users').update({ pin_hash:hash }).eq('name',name).eq('role',role);
-    if (error) throw error;
-    showToastMain(`✅ PIN reset for ${name}`);
+    await newProjectApiPost({action:'users_manage',op:'reset_pin',name,role,pin:newPin},AUTH.token);
+    showToastMain(`✅ Unique PIN reset for ${name}`);
     loadUserLists();
   } catch(e) { alert('Error: ' + e.message); }
 }
 
 async function toggleUserActive(name, role, active) {
   try {
-    const { error } = await DB._client.table('lpg_users').update({ active }).eq('name',name).eq('role',role);
-    if (error) throw error;
+    await newProjectApiPost({action:'users_manage',op:'set_active',name,role,active},AUTH.token);
     showToastMain(`${name} ${active?'enabled':'disabled'}`);
     loadUserLists();
   } catch(e) { alert('Error: ' + e.message); }
