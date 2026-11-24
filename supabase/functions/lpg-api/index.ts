@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SESSION_SECRET = Deno.env.get("SESSION_SECRET")!;
-const SALT = "lpg_salt_2526";
+const LEGACY_SALT = "lpg_salt_2526";
 const EXPECTED_PROJECT_URL = "https://uggqsvgxjhvdfkddqzyh.supabase.co";
 
 // Fail closed: this function must never run against the retired project, even if
@@ -74,15 +74,44 @@ async function sign(value: string): Promise<string> {
   return b64(new Uint8Array(signature));
 }
 
-async function hashPin(pin: string): Promise<string> {
-  const bytes = await crypto.subtle.digest(
-    "SHA-256",
-    encoder.encode(pin + SALT),
-  );
+function hex(bytes: Uint8Array): string {
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
-  return Array.from(new Uint8Array(bytes))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+// New PINs use per-account random salts and PBKDF2. The legacy verifier below
+// remains only to upgrade existing accounts safely on their next successful login.
+function createPinSalt(): string {
+  return hex(crypto.getRandomValues(new Uint8Array(16)));
+}
+
+async function hashPin(pin: string, salt: string): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", encoder.encode("lpg-pin-v2:" + pin + SESSION_SECRET), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt: encoder.encode(salt), iterations: 310000, hash: "SHA-256" },
+    key,
+    256,
+  );
+  return hex(new Uint8Array(bits));
+}
+
+async function hashPinLegacy(pin: string): Promise<string> {
+  const bytes = await crypto.subtle.digest("SHA-256", encoder.encode(pin + LEGACY_SALT));
+  return hex(new Uint8Array(bytes));
+}
+
+async function pinFingerprint(pin: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw", encoder.encode(SESSION_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
+  );
+  const bytes = await crypto.subtle.sign("HMAC", key, encoder.encode("lpg-pin-fingerprint:" + pin));
+  return hex(new Uint8Array(bytes));
+}
+
+function constantTimeEqual(a: string, b: string): boolean {
+  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }
 
 async function sha256Hex(value: string): Promise<string> {
@@ -369,15 +398,21 @@ Deno.serve(async (req) => {
         );
       }
 
-      const newAdminPinHash = await hashPin(pin);
-      const { data: reusedAdminPin, error: reusedAdminPinError } = await db.from("lpg_users")
-        .select("id").neq("name", "admin").eq("pin_hash", newAdminPinHash).limit(1);
-      if (reusedAdminPinError) return Response.json({ error: "Could not verify PIN uniqueness" }, { status: 503, headers: cors });
-      if ((reusedAdminPin || []).length) return Response.json({ error: "Choose a PIN not used by another account" }, { status: 409, headers: cors });
+      const newAdminPinSalt = createPinSalt();
+      const newAdminPinHash = await hashPin(pin, newAdminPinSalt);
+      const newAdminFingerprint = await pinFingerprint(pin);
+      const legacyAdminHash = await hashPinLegacy(pin);
+      const [{data:reusedAdminFingerprint,error:adminFingerprintError},{data:reusedAdminLegacy,error:adminLegacyError}] = await Promise.all([
+        db.from("lpg_users").select("id").neq("name","admin").eq("pin_fingerprint",newAdminFingerprint).limit(1),
+        db.from("lpg_users").select("id").neq("name","admin").is("pin_salt",null).eq("pin_hash",legacyAdminHash).limit(1)
+      ]);
+      if (adminFingerprintError || adminLegacyError) return Response.json({ error: "Could not verify PIN uniqueness" }, { status: 503, headers: cors });
+      if ((reusedAdminFingerprint || []).length || (reusedAdminLegacy || []).length)
+        return Response.json({ error: "Choose a PIN not used by another account" }, { status: 409, headers: cors });
 
       const { data: updatedAdmin, error: updateError } = await db
         .from("lpg_users")
-        .update({ pin_hash: newAdminPinHash, active: true })
+        .update({ pin_hash: newAdminPinHash, pin_salt:newAdminPinSalt, pin_fingerprint:newAdminFingerprint, active: true })
         .eq("name", "admin")
         .eq("role", "admin")
         .select("id,name,role,active")
@@ -430,7 +465,7 @@ Deno.serve(async (req) => {
       // normalized equality so ILIKE wildcard characters cannot broaden access.
       const { data: matchingUsers, error } = await db
         .from("lpg_users")
-        .select("name,role,pin_hash,active")
+        .select("id,name,role,pin_hash,pin_salt,pin_fingerprint,active")
         .ilike("name", name)
         .limit(2);
 
@@ -441,11 +476,31 @@ Deno.serve(async (req) => {
       // Refuse ambiguous duplicate usernames rather than authenticating the wrong account.
       const user = exactMatches.length === 1 ? exactMatches[0] : null;
 
+      const pinValid = !!user && (user.pin_salt
+        ? constantTimeEqual(user.pin_hash, await hashPin(pin, user.pin_salt))
+        : constantTimeEqual(user.pin_hash, await hashPinLegacy(pin)));
       const valid =
         !!user &&
         user.active === true &&
         ["admin", "staff", "delivery"].includes(user.role) &&
-        user.pin_hash === await hashPin(pin);
+        pinValid;
+
+      if (valid && user) {
+        const fingerprint = await pinFingerprint(pin);
+        if (!user.pin_salt) {
+          const salt = createPinSalt();
+          const upgradedHash = await hashPin(pin, salt);
+          const {data:upgraded,error:upgradeError}=await db.from("lpg_users")
+            .update({pin_hash:upgradedHash,pin_salt:salt,pin_fingerprint:fingerprint})
+            .eq("id",user.id).eq("pin_hash",user.pin_hash).select("id").maybeSingle();
+          if (upgradeError || !upgraded) return Response.json({error:"PIN security upgrade could not be saved. Please retry login."},{status:503,headers:cors});
+          user.pin_hash=upgradedHash;user.pin_salt=salt;user.pin_fingerprint=fingerprint;
+        } else if (!user.pin_fingerprint) {
+          const {error:fingerprintError}=await db.from("lpg_users").update({pin_fingerprint:fingerprint}).eq("id",user.id);
+          if (fingerprintError) return Response.json({error:"PIN security update could not be saved. Please retry login."},{status:503,headers:cors});
+          user.pin_fingerprint=fingerprint;
+        }
+      }
 
       await db.from("lpg_login_log").insert({
         name,
@@ -795,12 +850,18 @@ Deno.serve(async (req) => {
       const { data: existing, error: existingError } = await db.from("lpg_users").select("id,name,role").ilike("name", name).limit(5);
       if (existingError) return Response.json({ error: "Account duplicate check failed" }, { status: 400, headers: cors });
       if ((existing || []).some((u:any) => String(u.name).toLowerCase() === name.toLowerCase())) return Response.json({ error: "An account with this name already exists. Names must be unique across roles." }, { status: 409, headers: cors });
-      const newUserPinHash = await hashPin(pin);
-      const { data: reusedPin, error: reusedPinError } = await db.from("lpg_users")
-        .select("id").eq("pin_hash", newUserPinHash).limit(1);
-      if (reusedPinError) return Response.json({ error: "Could not verify PIN uniqueness" }, { status: 503, headers: cors });
-      if ((reusedPin || []).length) return Response.json({ error: "Each staff member must have a different PIN. Choose an unused PIN." }, { status: 409, headers: cors });
-      const { data: created, error: createError } = await db.from("lpg_users").insert({ role, name, pin_hash: newUserPinHash, active: true, created_by: user.name }).select("id,role,name,active,created_by,created_at").single();
+      const newUserPinSalt=createPinSalt();
+      const newUserPinHash=await hashPin(pin,newUserPinSalt);
+      const newUserFingerprint=await pinFingerprint(pin);
+      const legacyUserHash=await hashPinLegacy(pin);
+      const [{data:reusedFingerprint,error:fingerprintError},{data:reusedLegacy,error:legacyError}]=await Promise.all([
+        db.from("lpg_users").select("id").eq("pin_fingerprint",newUserFingerprint).limit(1),
+        db.from("lpg_users").select("id").is("pin_salt",null).eq("pin_hash",legacyUserHash).limit(1)
+      ]);
+      if(fingerprintError||legacyError)return Response.json({error:"Could not verify PIN uniqueness"},{status:503,headers:cors});
+      if((reusedFingerprint||[]).length||(reusedLegacy||[]).length)
+        return Response.json({error:"Each staff member must have a different PIN. Choose an unused PIN."},{status:409,headers:cors});
+      const { data: created, error: createError } = await db.from("lpg_users").insert({ role, name, pin_hash: newUserPinHash, pin_salt:newUserPinSalt, pin_fingerprint:newUserFingerprint, active: true, created_by: user.name }).select("id,role,name,active,created_by,created_at").single();
       if (createError) return Response.json({ error: createError.message }, { status: 400, headers: cors });
       return Response.json({ data: created }, { headers: cors });
     }
