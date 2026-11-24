@@ -1761,6 +1761,7 @@ body.delivery-restricted .logged-in-bar #loggedInRole { display:none !important;
             </select>
           </div>
           <button class="btn btn-primary" onclick="buildRouteOptimizer()" style="height:32px;">🗺️ Optimize Routes</button>
+          <button class="btn btn-success" onclick="publishSelectedRoute()" style="height:32px;">⬆️ Publish selected route</button>
           <span id="routeStatus" style="font-size:11px;color:var(--text2);align-self:center;"></span>
         </div>
 
@@ -8731,6 +8732,29 @@ function renderRouteSummaryCards() {
   }).join('');
   el.querySelectorAll('[data-route-dm]').forEach(card => card.addEventListener('click', () => filterRouteByDM(card.dataset.routeDm)));
 }
+
+async function publishSelectedRoute() {
+  const statusEl=document.getElementById('routeStatus');
+  const dm=String((document.getElementById('routeDMSelect')||{}).value||'').trim();
+  if(!dm){statusEl.textContent='⚠️ Select one delivery boy before publishing.';return;}
+  const route=_routeData.find(r=>r.dm===dm);
+  if(!route){statusEl.textContent='⚠️ Optimize routes first.';return;}
+  const stops=route.optimized.filter(stop=>stop.stopType==='approved_consumer_gps').map((stop,index)=>{
+    const c=stop.consumers[0]||{};
+    return {booking_key:String(c.orderNo||c.id||''),consumer_no:String(c.consumerNo||''),stop_order:index+1};
+  }).filter(x=>x.booking_key&&x.consumer_no);
+  if(!stops.length){statusEl.textContent='⚠️ No approved consumer GPS stops are available for this delivery boy. Area estimates cannot be published as exact customer stops.';return;}
+  if(!AUTH?.token||!['admin','staff'].includes(AUTH.role)){statusEl.textContent='⚠️ Office admin/staff login is required to publish routes.';return;}
+  const now=new Date(),routeDate=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  if(!confirm('Publish '+stops.length+' approved GPS stops for '+dm+' on '+routeDate+'? This replaces the previous published route for this delivery boy and date.'))return;
+  statusEl.textContent='⏳ Publishing and validating assigned bookings…';
+  try{
+    const result=await newProjectApiPost({action:'route_manage',op:'publish',route_date:routeDate,delivery_man:dm,stops},AUTH.token);
+    statusEl.textContent='✅ Published '+(result.stops||[]).length+' GPS stops for '+dm+' · straight-line estimate '+Number(result.total_distance_km||0).toFixed(1)+' km. DeliveryApp will load this route on refresh.';
+    showToast2('✅ Route published for '+dm);
+  }catch(e){statusEl.textContent='❌ Route not published: '+e.message;}
+}
+
 
 function renderRouteTables() {
   const el = document.getElementById('routeTables'); if (!el) return;
