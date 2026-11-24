@@ -3081,26 +3081,14 @@ const DB = {
       if (showFeedback) {
         const orderCount = deliveredRaw.length;
         const cylinderCount = deliveredRaw.reduce((sum, row) => sum + (Number(row.qty) || 0), 0);
-        alert('Supabase sync successful.
-
-Delivered orders: ' + orderCount.toLocaleString() + '
-Cylinders: ' + cylinderCount.toLocaleString() + '
-Masters: ' + mastersRaw.length.toLocaleString() + '
-Pending: ' + pendingRaw.length.toLocaleString() + '
-Remarks: ' + remarksRaw.length.toLocaleString() + '
-
-Synced at: ' + stamp);
+        alert('Supabase sync successful.\n\nDelivered orders: ' + orderCount.toLocaleString() + '\nCylinders: ' + cylinderCount.toLocaleString() + '\nMasters: ' + mastersRaw.length.toLocaleString() + '\nPending: ' + pendingRaw.length.toLocaleString() + '\nRemarks: ' + remarksRaw.length.toLocaleString() + '\n\nSynced at: ' + stamp);
       }
       return true;
     } catch(e) {
       console.error('syncAll error; previous dashboard data retained:', e);
       this._updateIndicator('error');
       setText('lastSync', '⚠ Cloud sync failed');
-      if (showFeedback) alert('Supabase sync failed.
-
-' + (e && e.message ? e.message : String(e)) + '
-
-Existing Dashboard data has been retained.');
+      if (showFeedback) alert('Supabase sync failed.\n\n' + (e && e.message ? e.message : String(e)) + '\n\nExisting Dashboard data has been retained.');
       return false;
     } finally {
       this._syncing = false;
@@ -5134,8 +5122,7 @@ function exportInactive(){
   const headers=['Consumer No','Name','Mobile','Area','Nature','Last Refill','Package','Days Since','Booking Source','Cyls FY','eKYC','Call','Remark'];
   if(SHOW_ADDRESS) headers.push('Address');
   const rows=_inactiveFiltered.map(r=>{const rm=STATE.remarks[r.consumerNo]||{};const row=[r.consumerNo,r.consumerName,r.mobile,r.area,r.nature,r._lastDeliveryDate,r.lastPackage||'',r._daysSince||'Never',classifySource(r.lastRefillSource),r._cylFY||0,r.ekyc,rm.call||'',rm.r1||''];if(SHOW_ADDRESS)row.push(getBestAddress(r.consumerNo));return row;});
-  const csv=[headers,...rows].map(row=>row.map(c=>'"'+String(c||'').replace(/"/g,'""')+'"').join(',')).join('
-');
+  const csv=[headers,...rows].map(row=>row.map(c=>'"'+String(c||'').replace(/"/g,'""')+'"').join(',')).join('\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='Inactive_'+new Date().toLocaleDateString('en-IN').replace(/\//g,'-')+'.csv';a.click();
 }
 
@@ -5569,8 +5556,7 @@ function exportCurrentView(){
   else if(_currentTab==='inactive'){exportInactive();return;}
   else return;
   if(!data||!data.length){alert('No data to export');return;}
-  const csv=[headers,...data.map(rowFn)].map(row=>row.map(c=>'"'+String(c||'').replace(/"/g,'""')+'"').join(',')).join('
-');
+  const csv=[headers,...data.map(rowFn)].map(row=>row.map(c=>'"'+String(c||'').replace(/"/g,'""')+'"').join(',')).join('\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='LPG_'+_currentTab+'_'+new Date().toLocaleDateString('en-IN').replace(/\//g,'-')+'.csv';a.click();
 }
 function exportTable(id){exportCurrentView();}
@@ -5869,8 +5855,7 @@ window.addEventListener('DOMContentLoaded', () => {
   const today = todayKey();
   if (saved && saved.date === today && saved.dmName) {
     APP = saved;
-    if (!Array.isArray(APP.pendingCompletions)) APP.pendingCompletions = [];
-    if (!Array.isArray(APP.pendingGps)) APP.pendingGps = [];
+    if (!Array.isArray(APP.pendingCompletions)) APP.pendingCompletions = [];\n    if (!Array.isArray(APP.pendingGps)) APP.pendingGps = [];
     if (APP.deliverySyncVersion !== 3) { APP.pendingGps = APP.pendingGps || []; APP.deliverySyncVersion=3; }
     // Re-inject fresh data if available (dashboard may have updated deliveries)
     if (window.DELIVERY_DATA && window.DELIVERY_DATA.deliveries) {
@@ -6354,8 +6339,7 @@ async function flushPendingDeliveryCompletions(){
 async function syncDeliveryCompletions(){
   if(!DELIVERY_SESSION_TOKEN||!APP.dmName)return;
   try{
-    await flushPendingDeliveryGps();
-    const result=await newProjectApiPost({action:'delivery_completion',op:'list'},DELIVERY_SESSION_TOKEN);
+    await flushPendingDeliveryGps();\n    const result=await newProjectApiPost({action:'delivery_completion',op:'list'},DELIVERY_SESSION_TOKEN);
     const completed=new Set((result.data||[]).map(x=>String(x.booking_key)));
     APP.deliveries.forEach(d=>{
       if(completed.has(String(d.orderNo||d.id))){d.done=true;d.serverCompleted=true;d.syncPending=false;}
@@ -6587,8 +6571,7 @@ function generateDeliveryApp(dmName) {
   let depot = null;
   try { const dp = localStorage.getItem('depot_pin'); if (dp) depot = JSON.parse(dp); } catch(e) {}
   const safeScriptJson = value => JSON.stringify(value).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
-  const dataScript = `
-<script>
+  const dataScript = `\n<script>
 window.DELIVERY_DATA = ${safeScriptJson(data)};
 window.KNOWN_GPS = ${safeScriptJson(knownGPS)};
 window.SUPABASE_CONFIG = ${safeScriptJson({ url:sbUrl, key:sbKey })};
@@ -6613,8 +6596,7 @@ function createApiClient(tokenProvider) {
     return newProjectApiPost(body,tokenProvider()).then(r=>({data:r.data||null,error:null})).catch(e=>({data:null,error:{message:e.message}}));
   }}; }};
 }
-<\/script>
-`;
+<\/script>\n`;
   const finalHtml = DELIVERY_APP_HTML.replace('</head>', dataScript + '</head>');
 
   // Use Blob URL — reliable in all browsers, preserves injected data
@@ -6638,21 +6620,13 @@ function createApiClient(tokenProvider) {
 function copyWhatsAppText(dmName) {
   const deliveries = STATE.pending.filter(p => p.deliveryMan && p.deliveryMan.toLowerCase().trim() === dmName.toLowerCase().trim());
   const today = new Date().toLocaleDateString('en-IN', {day:'numeric', month:'short'});
-  let text = `🔥 *Samruddhi Gas Agency (HP Gas)*
-📅 ${today} · ${dmName}
-
-`;
+  let text = `🔥 *Samruddhi Gas Agency (HP Gas)*\n📅 ${today} · ${dmName}\n\n`;
   deliveries.forEach((p, i) => {
-    text += `${i+1}. *${p.consumerName}*
-`;
-    text += `   📍 ${p.area||'—'}${p.address&&p.address!==p.area ? ' · '+p.address : ''}
-`;
-    text += `   🛢️ ${p.qty||1} Cylinder${(p.qty||1)>1?'s':''}
-`;
-    if (p.mobile) text += `   📞 ${p.mobile}
-`;
-    text += '
-';
+    text += `${i+1}. *${p.consumerName}*\n`;
+    text += `   📍 ${p.area||'—'}${p.address&&p.address!==p.area ? ' · '+p.address : ''}\n`;
+    text += `   🛢️ ${p.qty||1} Cylinder${(p.qty||1)>1?'s':''}\n`;
+    if (p.mobile) text += `   📞 ${p.mobile}\n`;
+    text += '\n';
   });
   text += `Total: ${deliveries.length} deliveries · ${deliveries.reduce((s,p)=>s+(p.qty||1),0)} cylinders`;
 
@@ -6697,8 +6671,7 @@ function runDiagnostics() {
   lines.push(`STATE.deliveredFY keys: ${JSON.stringify(Object.keys(STATE.deliveredFY).map(k=>k+':'+STATE.deliveredFY[k].length))}`);
   lines.push(`CACHE_VERSION: ${localStorage.getItem('lpg_cache_ver')} (current: 9)`);
 
-  out.textContent = lines.join('
-');
+  out.textContent = lines.join('\n');
 }
 
 function forceRebucket() {
@@ -6711,9 +6684,7 @@ function forceRebucket() {
   try { flat = JSON.parse(localStorage.getItem('lpg_delivered')||'[]'); } catch(e){}
 
   if (!flat.length) {
-    out.textContent = '❌ No flat data found in lpg_delivered.
-Your data may have been cleared or was never uploaded to this browser.
-Please re-upload your Excel files.';
+    out.textContent = '❌ No flat data found in lpg_delivered.\nYour data may have been cleared or was never uploaded to this browser.\nPlease re-upload your Excel files.';
     return;
   }
 
@@ -6747,14 +6718,8 @@ Please re-upload your Excel files.';
   STATE.delivered = STATE.deliveredFY[STATE.currentFYKey] || [];
   invalidateCache(); rebuildDashboard();
 
-  const summary = Object.keys(STATE.deliveredFY).map(fy=>`${FY_LABELS[fy]||fy}: ${STATE.deliveredFY[fy].length}`).filter(s=>!s.includes(': 0')).join('
-');
-  out.textContent = `✅ Re-bucket complete!
-
-Total flat records: ${flat.length}
-Date-placed: ${placed} | Defaulted to current FY: ${defaulted}
-
-${summary}`;
+  const summary = Object.keys(STATE.deliveredFY).map(fy=>`${FY_LABELS[fy]||fy}: ${STATE.deliveredFY[fy].length}`).filter(s=>!s.includes(': 0')).join('\n');
+  out.textContent = `✅ Re-bucket complete!\n\nTotal flat records: ${flat.length}\nDate-placed: ${placed} | Defaulted to current FY: ${defaulted}\n\n${summary}`;
 }
 
 
@@ -7274,15 +7239,7 @@ async function sendGpsLinkToWhatsApp(consumerNo){
   const m=(STATE.masters||[]).find(x=>String(x.consumerNo)===String(consumerNo));if(!m){showToastMain('Consumer not found');return;}
   const mobile=String(m.mobile||'').replace(/\D/g,'');if(mobile.length<10){showToastMain('Valid mobile number unavailable');return;}
   const waWindow=window.open('about:blank','_blank');
-  try{const result=await gpsApi('create_links',{base_url:consumerCapturePageUrl(),consumers:[{consumer_no:m.consumerNo}]});const l=(result.links||[])[0];if(!l)throw new Error('Secure link could not be created (consumer may already have approved GPS)');const key=localStorage.getItem('sb_key')||'';const url=consumerCapturePageUrl()+'?t='+encodeURIComponent(l.token)+'&k='+encodeURIComponent(key);const msg='नमस्कार '+(l.consumer_name||'ग्राहक')+'!
-ग्राहक क्रमांक: '+l.consumer_no+'
-
-📍 आपल्या घराचे अचूक GPS लोकेशन नोंदविण्यासाठी विनंती. कृपया लिंक उघडून आपले नाव व ग्राहक क्रमांक तपासा. ही आपलीच गॅस जोडणी असल्यास शक्यतो घराच्या मुख्य प्रवेशद्वाराजवळ सुरक्षित मोकळ्या जागेत उभे राहून एकदा बटण दाबा. GPS आपोआप तपासले जाईल. नकाशावर आपल्या घराच्या मुख्य प्रवेशद्वारावर pin ठेवा आणि लोकेशन सबमिट करा.
-
-लोकेशन नोंदवा: '+url+'
-
-धन्यवाद!
-समृद्धी गॅस एजन्सी, काटोल';const wa='https://wa.me/91'+mobile.slice(-10)+'?text='+encodeURIComponent(msg);if(waWindow)waWindow.location.href=wa;else showToastMain('Popup blocked. Use the GPS Campaign Manager instead.');}catch(e){if(waWindow)waWindow.close();showToastMain('GPS link error: '+e.message);}
+  try{const result=await gpsApi('create_links',{base_url:consumerCapturePageUrl(),consumers:[{consumer_no:m.consumerNo}]});const l=(result.links||[])[0];if(!l)throw new Error('Secure link could not be created (consumer may already have approved GPS)');const key=localStorage.getItem('sb_key')||'';const url=consumerCapturePageUrl()+'?t='+encodeURIComponent(l.token)+'&k='+encodeURIComponent(key);const msg='नमस्कार '+(l.consumer_name||'ग्राहक')+'!\nग्राहक क्रमांक: '+l.consumer_no+'\n\n📍 आपल्या घराचे अचूक GPS लोकेशन नोंदविण्यासाठी विनंती. कृपया लिंक उघडून आपले नाव व ग्राहक क्रमांक तपासा. ही आपलीच गॅस जोडणी असल्यास शक्यतो घराच्या मुख्य प्रवेशद्वाराजवळ सुरक्षित मोकळ्या जागेत उभे राहून एकदा बटण दाबा. GPS आपोआप तपासले जाईल. नकाशावर आपल्या घराच्या मुख्य प्रवेशद्वारावर pin ठेवा आणि लोकेशन सबमिट करा.\n\nलोकेशन नोंदवा: '+url+'\n\nधन्यवाद!\nसमृद्धी गॅस एजन्सी, काटोल';const wa='https://wa.me/91'+mobile.slice(-10)+'?text='+encodeURIComponent(msg);if(waWindow)waWindow.location.href=wa;else showToastMain('Popup blocked. Use the GPS Campaign Manager instead.');}catch(e){if(waWindow)waWindow.close();showToastMain('GPS link error: '+e.message);}
 }
 
 function buildLocTable() {
@@ -7441,13 +7398,9 @@ async function clearData(type, param) {
         localStorage.removeItem('lpg_masters');
         break;
       case 'delivered-all': {
-        const confirm1 = prompt('⚠️ This will permanently delete ALL delivered cylinder records.
-
-Type DELETE (in capitals) to confirm:');
+        const confirm1 = prompt('⚠️ This will permanently delete ALL delivered cylinder records.\n\nType DELETE (in capitals) to confirm:');
         if (confirm1 !== 'DELETE') { statusEl.textContent='❌ Cancelled — no data was deleted.'; return false; }
-        const confirm2 = prompt('⚠️ FINAL WARNING: ' + (getAllDeliveredRows().length||0) + ' delivery records will be lost forever.
-
-Type YES to proceed:');
+        const confirm2 = prompt('⚠️ FINAL WARNING: ' + (getAllDeliveredRows().length||0) + ' delivery records will be lost forever.\n\nType YES to proceed:');
         if (confirm2 !== 'YES') { statusEl.textContent='❌ Cancelled — no data was deleted.'; return false; }
         await requireApiMutation(DB._client.table('lpg_delivered').delete().neq('id', 0), 'Clear delivered history');
         STATE.deliveredFY = {};
@@ -7789,8 +7742,7 @@ function exportHPCLFormat(cno, order) {
 
   const csv = [headers, ...rows]
     .map(row => row.map(c => '"' + String(c||'').replace(/"/g,'""') + '"').join(','))
-    .join('
-');
+    .join('\n');
 
   const sortLabel = order === 'asc' ? 'Ascending' : 'Descending';
   const a = document.createElement('a');
@@ -8435,8 +8387,7 @@ function exportDMTable() {
   if (!_dmFiltered.length) { alert('No data to export'); return; }
   const headers = ['Delivery Man','FY Cylinders','FY Orders','Working Days','Avg Cyls/Day','Pending Today','Pending Qty','Areas'];
   const rows = _dmFiltered.map(r => [r.name, r.fyCyl, r.fyOrders, r.workingDays, r.avgPerDay, r.pendCount, r.pendQty, r.areas]);
-  const csv = [headers,...rows].map(row => row.map(c => '"'+String(c||'').replace(/"/g,'""')+'"').join(',')).join('
-');
+  const csv = [headers,...rows].map(row => row.map(c => '"'+String(c||'').replace(/"/g,'""')+'"').join(',')).join('\n');
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
   a.download = 'DeliveryMan_Performance_'+new Date().toLocaleDateString('en-IN').replace(/\//g,'-')+'.csv'; a.click();
 }
@@ -9012,8 +8963,7 @@ function handleGPSImport(input) {
   reader.onload = e => {
     try {
       const count = importGPSFromDeliveryApp(e.target.result);
-      alert(`✅ Imported ${count} GPS coordinates!
-${Object.keys(STATE.consumerGPS).length} total stored.`);
+      alert(`✅ Imported ${count} GPS coordinates!\n${Object.keys(STATE.consumerGPS).length} total stored.`);
       updateGPSCoverage();
     } catch(err) {
       alert('❌ Import failed: ' + err.message);
@@ -9150,10 +9100,8 @@ function handleGPSFileImport(input) {
               (result.consumer_nos||[]).forEach(cno=>{if(STATE.gpsApprovals[cno]){STATE.gpsApprovals[cno].localOnly=false;STATE.gpsApprovals[cno].cloudSynced=true;}});
             }
             saveGpsApprovals();
-            cloudImportNote=`
-☁️ ${imported} uploaded to GPS cloud as pending review`+(skipped?` · ${skipped} skipped`:'');
-          } catch(err) { cloudImportNote='
-⚠️ Cloud import failed: '+err.message; }
+            cloudImportNote=`\n☁️ ${imported} uploaded to GPS cloud as pending review`+(skipped?` · ${skipped} skipped`:'');
+          } catch(err) { cloudImportNote='\n⚠️ Cloud import failed: '+err.message; }
         }
       }
       alert((queued ? `⏳ ${queued} queued for manual office review. No record was auto-approved.` : 'No valid GPS data found in file.') + cloudImportNote);
@@ -9475,8 +9423,7 @@ function exportApprovedFile() {
   a.href = URL.createObjectURL(blob);
   a.download = 'approved_gps_' + new Date().toISOString().slice(0,10) + '.json';
   a.click();
-  alert(`📤 Exported ${Object.keys(approved).length} approved locations.
-Send this file to each delivery man to import on their app.`);
+  alert(`📤 Exported ${Object.keys(approved).length} approved locations.\nSend this file to each delivery man to import on their app.`);
 }
 
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeFilterDropdown();closeApprovalDetail();}});
@@ -9519,8 +9466,7 @@ async function drConnect(){
 }
 async function drLoad(){const st=document.getElementById('drStatus'),from=document.getElementById('drFrom').value,to=document.getElementById('drTo').value;if(!drToken){st.textContent='Connect to API first';return;}if(!from||!to||from>to){st.textContent='Choose a valid date range';return;}document.getElementById('drBody').innerHTML='<tr><td colspan="8">Loading…</td></tr>';try{const d=await drPost({action:'db',table:'lpg_delivered',op:'date_wise_delivery_summary',start_date:from,end_date:to});drRows=Array.isArray(d.data)?d.data:(Array.isArray(d.data?.data)?d.data.data:[]);const people=[...new Set(drRows.map(r=>String(r.delivery_man||'UNASSIGNED').trim().toUpperCase()))].sort(),sel=document.getElementById('drPerson'),old=sel.value;sel.innerHTML='<option value="">All delivery persons</option>'+people.map(p=>'<option>'+drEsc(p)+'</option>').join('');sel.value=people.includes(old)?old:'';drRender();st.textContent='Loaded '+drRows.length+' grouped rows';st.style.color='var(--green)';}catch(e){document.getElementById('drBody').innerHTML='<tr><td colspan="8" style="color:var(--red)">Failed: '+drEsc(e.message)+'</td></tr>';st.textContent='Request failed';st.style.color='var(--red)';}}
 function drRender(){const person=document.getElementById('drPerson').value,rows=drRows.filter(r=>!person||String(r.delivery_man||'UNASSIGNED').trim().toUpperCase()===person),ks=['total_records','total_cylinders','otp_dac_records','otp_dac_cylinders','cdcms_records','cdcms_cylinders'],sum=Object.fromEntries(ks.map(k=>[k,rows.reduce((a,r)=>a+Number(r[k]||0),0)]));[['drRecords','total_records'],['drCylinders','total_cylinders'],['drOtp','otp_dac_cylinders'],['drCdcms','cdcms_cylinders']].forEach(([id,k])=>document.getElementById(id).textContent=sum[k].toLocaleString('en-IN'));rows.sort((a,b)=>String(a.delivery_date).localeCompare(String(b.delivery_date))||String(a.delivery_man).localeCompare(String(b.delivery_man)));document.getElementById('drBody').innerHTML=rows.length?rows.map(r=>'<tr><td>'+drEsc(r.delivery_date)+'</td><td>'+drEsc(String(r.delivery_man||'UNASSIGNED').toUpperCase())+'</td><td>'+Number(r.total_records||0)+'</td><td><b>'+Number(r.total_cylinders||0)+'</b></td><td>'+Number(r.otp_dac_records||0)+'</td><td>'+Number(r.otp_dac_cylinders||0)+'</td><td>'+Number(r.cdcms_records||0)+'</td><td>'+Number(r.cdcms_cylinders||0)+'</td></tr>').join(''):'<tr><td colspan="8">No rows for this filter.</td></tr>';document.getElementById('drTotals').textContent='Filtered totals: '+sum.total_records+' records · '+sum.total_cylinders+' cylinders · OTP/DAC '+sum.otp_dac_cylinders+' cylinders · CDCMS '+sum.cdcms_cylinders+' cylinders. Source records are not modified.';}
-function drExport(){const person=document.getElementById('drPerson').value,rows=drRows.filter(r=>!person||String(r.delivery_man||'UNASSIGNED').trim().toUpperCase()===person);if(!rows.length){alert('Load a report first.');return;}const ks=['delivery_date','delivery_man','total_records','total_cylinders','otp_dac_records','otp_dac_cylinders','cdcms_records','cdcms_cylinders'],csv=[ks.join(','),...rows.map(r=>ks.map(k=>'"'+String(r[k]??'').replace(/"/g,'""')+'"').join(','))].join('\r
-'),blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='Samruddhi_Delivery_Summary.csv';a.click();URL.revokeObjectURL(a.href);}
+function drExport(){const person=document.getElementById('drPerson').value,rows=drRows.filter(r=>!person||String(r.delivery_man||'UNASSIGNED').trim().toUpperCase()===person);if(!rows.length){alert('Load a report first.');return;}const ks=['delivery_date','delivery_man','total_records','total_cylinders','otp_dac_records','otp_dac_cylinders','cdcms_records','cdcms_cylinders'],csv=[ks.join(','),...rows.map(r=>ks.map(k=>'"'+String(r[k]??'').replace(/"/g,'""')+'"').join(','))].join('\r\n'),blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='Samruddhi_Delivery_Summary.csv';a.click();URL.revokeObjectURL(a.href);}
 document.addEventListener('DOMContentLoaded',installDeliveryReportUI);
 setTimeout(installDeliveryReportUI,1000);
 
@@ -9569,15 +9515,7 @@ async function generateGpsCampaignLinks(){
   box.innerHTML='<b>Created '+_gpsCampaignLinks.length+' unique secure links.</b><div style="margin-top:8px">'+_gpsCampaignLinks.map(l=>{
    const mobile=String(l.mobile||'').replace(/\D/g,'');if(mobile.length<10)return '<div>'+escHtml(l.consumer_no)+' · Valid mobile unavailable</div>';
    const url=base+'?t='+encodeURIComponent(l.token)+'&k='+encodeURIComponent(key);
-   const msg='नमस्कार '+(l.consumer_name||'ग्राहक')+'!
-ग्राहक क्रमांक: '+l.consumer_no+'
-
-📍 आपल्या घराचे अचूक GPS लोकेशन नोंदविण्यासाठी विनंती. कृपया लिंक उघडून आपले नाव व ग्राहक क्रमांक तपासा. ही आपलीच गॅस जोडणी असल्यास शक्यतो घराच्या मुख्य प्रवेशद्वाराजवळ सुरक्षित मोकळ्या जागेत उभे राहून एकदा बटण दाबा. GPS आपोआप तपासले जाईल. नकाशावर आपल्या घराच्या मुख्य प्रवेशद्वारावर pin ठेवा आणि लोकेशन सबमिट करा.
-
-लोकेशन नोंदवा: '+url+'
-
-धन्यवाद!
-समृद्धी गॅस एजन्सी, काटोल';
+   const msg='नमस्कार '+(l.consumer_name||'ग्राहक')+'!\nग्राहक क्रमांक: '+l.consumer_no+'\n\n📍 आपल्या घराचे अचूक GPS लोकेशन नोंदविण्यासाठी विनंती. कृपया लिंक उघडून आपले नाव व ग्राहक क्रमांक तपासा. ही आपलीच गॅस जोडणी असल्यास शक्यतो घराच्या मुख्य प्रवेशद्वाराजवळ सुरक्षित मोकळ्या जागेत उभे राहून एकदा बटण दाबा. GPS आपोआप तपासले जाईल. नकाशावर आपल्या घराच्या मुख्य प्रवेशद्वारावर pin ठेवा आणि लोकेशन सबमिट करा.\n\nलोकेशन नोंदवा: '+url+'\n\nधन्यवाद!\nसमृद्धी गॅस एजन्सी, काटोल';
    return '<div style="padding:8px;border-bottom:1px solid #ddd"><b>'+escHtml(l.consumer_no)+' · '+escHtml(l.consumer_name||'')+'</b><br><a target="_blank" rel="noopener" style="display:inline-block;margin-top:6px;padding:8px 12px;background:#16845b;color:white;border-radius:7px;text-decoration:none" href="https://wa.me/91'+mobile.slice(-10)+'?text='+encodeURIComponent(msg)+'">Open WhatsApp</a></div>';
   }).join('')+'</div>';
  }catch(e){box.textContent='ERROR: '+e.message;}finally{btn.disabled=false;btn.textContent='Generate WhatsApp Links';}
