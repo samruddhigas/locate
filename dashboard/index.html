@@ -8574,11 +8574,22 @@ async function buildRouteOptimizer() {
   if (!STATE.pending.length) { statusEl.textContent = '⚠️ No pending deliveries loaded'; return; }
 
   let depot = null;
-  const savedPin = localStorage.getItem('depot_pin');
-  if (savedPin) {
-    try { const d = JSON.parse(savedPin); if (Number.isFinite(Number(d.lat)) && Number.isFinite(Number(d.lng))) depot = { lat:Number(d.lat), lng:Number(d.lng), name:d.label || 'Depot' }; } catch(e) {}
+  // Prefer the shared Supabase default depot so all office devices use the same origin.
+  try {
+    if (AUTH?.token) {
+      const shared = await newProjectApiPost({action:'locations_manage',op:'list'},AUTH.token);
+      const loc = (shared.locations||[]).find(x=>x.is_default) || (shared.locations||[]).find(x=>x.kind==='depot');
+      if (loc && Number.isFinite(Number(loc.lat)) && Number.isFinite(Number(loc.lng)))
+        depot = {lat:Number(loc.lat),lng:Number(loc.lng),name:loc.label||'Depot'};
+    }
+  } catch(e) { console.warn('Shared depot unavailable; checking this device saved pin.',e); }
+  if (!depot) {
+    const savedPin = localStorage.getItem('depot_pin');
+    if (savedPin) {
+      try { const d = JSON.parse(savedPin); if (Number.isFinite(Number(d.lat)) && Number.isFinite(Number(d.lng))) depot = { lat:Number(d.lat), lng:Number(d.lng), name:d.label || 'Depot' }; } catch(e) {}
+    }
   }
-  if (!depot) { statusEl.textContent = '⚠️ Set depot location first — click 📍 Set Depot'; return; }
+  if (!depot) { statusEl.textContent = '⚠️ Set a shared depot location first'; return; }
 
   const byDM = new Map();
   const fallbackByDM = new Map();
@@ -8815,6 +8826,7 @@ DB.syncGPS = async function() {
         capturedAt:r.captured_at||now,status:r.status||'capturing',source:r.source||'delivery_app',
         rawLat:r.raw_lat??null,rawLng:r.raw_lng??null,pinLat:r.pin_lat??r.lat,pinLng:r.pin_lng??r.lng,captureMode:r.capture_mode||'',
         consumerName:r.consumer_name||lookupConsumerName(cno),area:r.area||'',dmName:r.dm_name||'',cloudSynced:true};
+      if (rec.status==='rejected') return; // Rejected locations stay in history but must not re-enter the approval queue.
       if (rec.status==='approved' || rec.source==='approved' || rec.source==='staff_pin') {
         approvedNext[cno]=rec; autoApproved++;
       } else { pendingNext[cno]={...rec,submittedAt:rec.capturedAt,importedAt:now}; queued++; }
@@ -9314,14 +9326,17 @@ async function approveDetailPinCorrected() {
 }
 
 async function rejectApproval() {
-  if (AUTH?.role !== 'admin' || !AUTH?.token) { showToast2('Admin permission is required to reject GPS records.'); return false; }
+  if (!['admin','staff'].includes(AUTH?.role) || !AUTH?.token) { showToast2('Office admin or staff login is required to reject GPS records.'); return false; }
   if (!confirm('Reject this location? The delivery man will need to re-capture.')) return false;
   try { await gpsApi('reject',{consumer_no:_adCurrentCno}); } catch(e) { showToast2('❌ Reject failed: '+e.message); return; }
   delete STATE.gpsApprovals[_adCurrentCno];
+  delete STATE.consumerGPS[_adCurrentCno];
+  try { localStorage.setItem('lpg_gps',JSON.stringify(STATE.consumerGPS)); } catch(e) {}
   saveGpsApprovals();
   updateApprovalBadge();
   closeApprovalDetail();
   renderApprovalStats();
+  updateGPSCoverage();
   if (_apprvView==='map') renderApprovalMap(); else renderApprovalTable();
 }
 
