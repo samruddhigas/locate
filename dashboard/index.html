@@ -6277,7 +6277,7 @@ function markDone(id) {
   const d = APP.deliveries.find(x => x.id === id);
   if (!d || d.done) return;
   // Require a saved customer GPS pin before confirming delivery.
-  if (!d.gpsAt && !(d.lat != null && d.lng != null && Number.isFinite(Number(d.lat)) && Number.isFinite(Number(d.lng))) {
+  if (!d.gpsAt && !(d.lat != null && d.lng != null && Number.isFinite(Number(d.lat)) && Number.isFinite(Number(d.lng)))) {
     toast('📍 GPS required first · capture and save the customer entrance location','#b45309');
     captureDeliveryGPS(d, 'delivery_after_mark_delivered');
     return;
