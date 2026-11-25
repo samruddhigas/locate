@@ -5833,7 +5833,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <!-- Toast -->
 <div id="toast"></div>
 
-<div id="deliveryGpsPinOverlay"><div id="deliveryGpsPinPanel"><div style="font-weight:800;font-size:17px">📍 Confirm exact house entrance</div><div id="deliveryGpsPinConsumer" style="font-size:12px;color:#cbd5e1;margin-top:4px"></div><div style="font-size:12px;color:#cbd5e1;margin-top:8px">GPS fix: <b id="deliveryGpsPinAccuracy"></b>. Drag the pin to the customer's actual main entrance.</div><div id="deliveryGpsPinMap"></div><div id="deliveryGpsPinCoords" style="font-size:11px;color:#cbd5e1;margin:6px 0"></div><div class="deliveryGpsPinActions"><button class="secondary" onclick="setDeliveryGpsLayer('street')">Street</button><button class="secondary" onclick="setDeliveryGpsLayer('satellite')">Satellite</button><button id="deliveryGpsPinSave" onclick="saveDeliveryGpsPin()">Confirm & Save</button></div></div></div>
+<div id="deliveryGpsPinOverlay"><div id="deliveryGpsPinPanel"><div style="font-weight:800;font-size:17px">📍 Confirm exact house entrance</div><div id="deliveryGpsPinConsumer" style="font-size:12px;color:#cbd5e1;margin-top:4px"></div><div style="font-size:12px;color:#cbd5e1;margin-top:8px">GPS fix: <b id="deliveryGpsPinAccuracy"></b>. Drag the pin to the customer's actual main entrance.</div><div id="deliveryGpsPinMap"></div><div id="deliveryGpsPinCoords" style="font-size:11px;color:#cbd5e1;margin:6px 0"></div><div class="deliveryGpsPinActions"><button class="secondary" onclick="setDeliveryGpsLayer('street')">Street</button><button class="secondary" onclick="setDeliveryGpsLayer('satellite')">Satellite</button><button id="deliveryGpsPinSave" onclick="saveDeliveryGpsPin()">Confirm & Save</button><button class="secondary" onclick="cancelDeliveryGpsPin()">Cancel</button></div></div></div>
 <script>
 // ================================================================
 // CONFIG & STATE
@@ -6368,7 +6368,7 @@ function undoDone(id) {
 // ================================================================
 // GPS SAVE & AVERAGING
 // ================================================================
-let _deliveryGpsWatch=null,_deliveryGpsSamples=[],_deliveryGpsBest=null,_deliveryGpsCurrent=null,_deliveryGpsCaptureMode='delivery_after_mark_delivered',_deliveryGpsMap=null,_deliveryGpsMarker=null,_deliveryGpsSatellite=null,_deliveryGpsStreet=null,_deliveryGpsLayer='satellite';
+let _deliveryGpsWatch=null,_deliveryGpsSamples=[],_deliveryGpsBest=null,_deliveryGpsCurrent=null,_deliveryGpsCaptureMode='delivery_after_mark_delivered',_deliveryGpsMap=null,_deliveryGpsMarker=null,_deliveryGpsSatellite=null,_deliveryGpsStreet=null,_deliveryGpsLayer='satellite',_deliveryGpsPinResolve=null;
 function deliveryGpsDistance(a,b,c,d){const R=6371000,x=(c-a)*Math.PI/180,y=(d-b)*Math.PI/180,h=Math.sin(x/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)**2;return 2*R*Math.asin(Math.sqrt(h));}
 async function searchGpsOnlyConsumers(){
   const q=document.getElementById('gpsOnlySearch').value.trim(),box=document.getElementById('gpsOnlyResults');
@@ -6396,47 +6396,22 @@ async function captureDeliveryGPS(d, captureMode='delivery_after_mark_delivered'
   try {
     const best = await new Promise((resolve,reject)=>{
       let watch=null,timer=null,bestFix=null,finished=false;
-      const finish=err=>{
-        if(finished)return;finished=true;
-        if(watch!==null)navigator.geolocation.clearWatch(watch);
-        if(timer!==null)clearTimeout(timer);
-        if(err)reject(err);else resolve(bestFix);
-      };
+      const finish=err=>{if(finished)return;finished=true;if(watch!==null)navigator.geolocation.clearWatch(watch);if(timer!==null)clearTimeout(timer);if(err)reject(err);else resolve(bestFix);};
       timer=setTimeout(()=>finish(bestFix?null:new Error('No reliable GPS fix. Move to an open area and retry.')),18000);
-      try {
-        watch=navigator.geolocation.watchPosition(pos=>{
-          const c=pos.coords,acc=Number(c.accuracy);
-          if(!Number.isFinite(acc)||acc<=0||acc>1000)return;
-          const fix={lat:Number(c.latitude),lng:Number(c.longitude),acc,ts:Number(pos.timestamp)||Date.now()};
-          if(!Number.isFinite(fix.lat)||!Number.isFinite(fix.lng))return;
-          if(!bestFix||fix.acc<bestFix.acc)bestFix=fix;
-          if(acc<=10)finish();
-        },err=>{
-          if(err.code===1)finish(new Error('Location permission denied. Allow precise location for this app.'));
-        },{enableHighAccuracy:true,maximumAge:0,timeout:20000});
-      } catch(e) { finish(e); }
+      try { watch=navigator.geolocation.watchPosition(pos=>{
+        const c=pos.coords,acc=Number(c.accuracy);if(!Number.isFinite(acc)||acc<=0||acc>1000)return;
+        const fix={lat:Number(c.latitude),lng:Number(c.longitude),acc,ts:Number(pos.timestamp)||Date.now()};
+        if(!Number.isFinite(fix.lat)||!Number.isFinite(fix.lng))return;
+        if(!bestFix||fix.acc<bestFix.acc)bestFix=fix;if(acc<=10)finish();
+      },err=>{if(err.code===1)finish(new Error('Location permission denied. Allow precise location for this app.'));},{enableHighAccuracy:true,maximumAge:0,timeout:20000});}
+      catch(e){finish(e);}
     });
     if(!best||best.acc>30)throw new Error('Best GPS accuracy was '+Math.round(best?.acc||0)+' m. Need 30 m or better.');
-    const payload={booking_key:String(d.orderNo||d.id||''),consumer_no:String(d.consumerNo),raw_lat:best.lat,raw_lng:best.lng,pin_lat:best.lat,pin_lng:best.lng,lat:best.lat,lng:best.lng,acc:best.acc,readings:[{lat:best.lat,lng:best.lng,acc:best.acc,ts:best.ts}],capture_mode:captureMode};
-    try {
-      await newProjectApiPost({action:'gps_capture',...payload},DELIVERY_SESSION_TOKEN);
-      d.lat=best.lat;d.lng=best.lng;d.gpsAt=new Date().toISOString();d.gpsAccuracy=best.acc;save();
-      toast('📍 Best GPS saved · ±'+Math.round(best.acc)+' m','#22c55e');
-      return true;
-    } catch(e) {
-      if(!navigator.onLine||/failed to fetch|networkerror|load failed/i.test(e.message||'')){
-        APP.pendingGps=Array.isArray(APP.pendingGps)?APP.pendingGps:[];
-        if(!APP.pendingGps.some(x=>String(x.booking_key||'')===String(payload.booking_key)&&String(x.consumer_no)===String(payload.consumer_no)))APP.pendingGps.push(payload);
-        d.lat=best.lat;d.lng=best.lng;d.gpsAt='queued';d.gpsAccuracy=best.acc;save();
-        toast('📍 GPS captured · waiting to sync · ±'+Math.round(best.acc)+' m','#b45309');
-        return false;
-      }
-      throw e;
-    }
-  } catch(e) {
-    toast('⚠️ GPS not captured · '+(e.message||'try again'),'#b45309');
-    return false;
-  }
+    if(!window.L)throw new Error('Map could not load. GPS was not submitted; reconnect and retry.');
+    _deliveryGpsCurrent=d;_deliveryGpsBest=best;_deliveryGpsSamples=[best];_deliveryGpsCaptureMode=captureMode;
+    const saved=await new Promise(resolve=>{_deliveryGpsPinResolve=resolve;showDeliveryGpsPin(d,best);});
+    return saved===true;
+  } catch(e) { toast('⚠️ GPS not captured · '+(e.message||'try again'),'#b45309'); return false; }
 }
 function showDeliveryGpsPin(d,best){
   if(!window.L){toast('⚠️ Map unavailable · GPS not submitted','#b45309');return;}
@@ -6445,16 +6420,31 @@ function showDeliveryGpsPin(d,best){
   document.getElementById('deliveryGpsPinOverlay').classList.add('open');
   if(!_deliveryGpsMap){_deliveryGpsMap=L.map('deliveryGpsPinMap',{zoomControl:true}).setView([best.lat,best.lng],20);_deliveryGpsStreet=L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',{maxZoom:22,attribution:'© OpenStreetMap contributors © CARTO'});_deliveryGpsSatellite=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Tiles © Esri'});_deliveryGpsSatellite.addTo(_deliveryGpsMap);}else _deliveryGpsMap.setView([best.lat,best.lng],20);
   if(_deliveryGpsMarker)_deliveryGpsMarker.remove();_deliveryGpsMarker=L.marker([best.lat,best.lng],{draggable:true}).addTo(_deliveryGpsMap);
-  _deliveryGpsMarker.on('dragend',()=>{const p=_deliveryGpsMarker.getLatLng();document.getElementById('deliveryGpsPinCoords').textContent='Entrance pin offset: '+Math.round(deliveryGpsDistance(best.lat,best.lng,p.lat,p.lng))+' m';});
-  document.getElementById('deliveryGpsPinCoords').textContent='Move pin to the actual main entrance.';setTimeout(()=>_deliveryGpsMap.invalidateSize(),180);
+  const updatePin=()=>{const p=_deliveryGpsMarker.getLatLng(),offset=deliveryGpsDistance(best.lat,best.lng,p.lat,p.lng);document.getElementById('deliveryGpsPinCoords').textContent='Entrance pin offset: '+Math.round(offset)+' m from GPS'+(offset>500?' · Move within 500 m':'');document.getElementById('deliveryGpsPinSave').disabled=offset>500;};
+  _deliveryGpsMarker.on('dragend',updatePin);_deliveryGpsMap.off('click');_deliveryGpsMap.on('click',e=>{_deliveryGpsMarker.setLatLng(e.latlng);updatePin();});
+  document.getElementById('deliveryGpsPinCoords').textContent='Drag the pin or tap the map to place it on the main entrance.';updatePin();setTimeout(()=>_deliveryGpsMap.invalidateSize(),180);
 }
 function setDeliveryGpsLayer(which){if(!_deliveryGpsMap)return;if(_deliveryGpsLayer==='street')_deliveryGpsMap.removeLayer(_deliveryGpsStreet);if(_deliveryGpsLayer==='satellite')_deliveryGpsMap.removeLayer(_deliveryGpsSatellite);_deliveryGpsLayer=which;(_deliveryGpsLayer==='street'?_deliveryGpsStreet:_deliveryGpsSatellite).addTo(_deliveryGpsMap);}
 async function saveDeliveryGpsPin(){
   if(!_deliveryGpsCurrent||!_deliveryGpsBest||!_deliveryGpsMarker)return;
   const btn=document.getElementById('deliveryGpsPinSave');btn.disabled=true;btn.textContent='Saving…';const p=_deliveryGpsMarker.getLatLng(),d=_deliveryGpsCurrent,best=_deliveryGpsBest;
-  try{await newProjectApiPost({action:'gps_capture',consumer_no:d.consumerNo,raw_lat:best.lat,raw_lng:best.lng,pin_lat:p.lat,pin_lng:p.lng,lat:p.lat,lng:p.lng,acc:best.acc,readings:_deliveryGpsSamples.slice(-5),capture_mode:_deliveryGpsCaptureMode},DELIVERY_SESSION_TOKEN);
+  const payload={booking_key:String(d.orderNo||d.id||''),consumer_no:String(d.consumerNo),raw_lat:best.lat,raw_lng:best.lng,pin_lat:p.lat,pin_lng:p.lng,lat:p.lat,lng:p.lng,acc:best.acc,readings:_deliveryGpsSamples.slice(-5),capture_mode:_deliveryGpsCaptureMode};
+  try{
+    await newProjectApiPost({action:'gps_capture',...payload},DELIVERY_SESSION_TOKEN);
     d.lat=p.lat;d.lng=p.lng;d.gpsAt=new Date().toISOString();d.gpsAccuracy=best.acc;save();updateStats();document.getElementById('deliveryGpsPinOverlay').classList.remove('open');toast('📍 Entrance location saved · लोकेशन नोंदविले');
-  }catch(e){toast('⚠️ GPS save failed · '+e.message,'#b45309');}finally{btn.disabled=false;btn.textContent='Confirm & Save';}
+    const done=_deliveryGpsPinResolve;_deliveryGpsPinResolve=null;if(done)done(true);
+  }catch(e){
+    if(!navigator.onLine||/failed to fetch|networkerror|load failed/i.test(e.message||'')){
+      APP.pendingGps=Array.isArray(APP.pendingGps)?APP.pendingGps:[];
+      if(!APP.pendingGps.some(x=>String(x.booking_key||'')===payload.booking_key&&String(x.consumer_no)===payload.consumer_no))APP.pendingGps.push(payload);
+      d.lat=p.lat;d.lng=p.lng;d.gpsAt='queued';d.gpsAccuracy=best.acc;save();document.getElementById('deliveryGpsPinOverlay').classList.remove('open');toast('📍 Entrance pin saved on phone · waiting to sync · ±'+Math.round(best.acc)+' m','#b45309');
+      const done=_deliveryGpsPinResolve;_deliveryGpsPinResolve=null;if(done)done(false);
+    }else toast('⚠️ GPS save failed · '+e.message,'#b45309');
+  }finally{btn.disabled=false;btn.textContent='Confirm & Save';}
+}
+function cancelDeliveryGpsPin(){
+  document.getElementById('deliveryGpsPinOverlay').classList.remove('open');
+  const done=_deliveryGpsPinResolve;_deliveryGpsPinResolve=null;if(done)done(false);
 }
 
 // ================================================================

@@ -2,7 +2,7 @@
 const API_URL='https://uggqsvgxjhvdfkddqzyh.supabase.co/functions/v1/lpg-api';
 const PUBLISHABLE_KEY='sb_publishable_gvys5Rb8ugEbQrBk2unNQQ_6ZmJSV4q';
 const $=id=>document.getElementById(id);
-const state={token:null,user:null,tokenExpires:0,rows:[],done:new Set(),gpsCaptured:new Set(),pendingCompletions:[],pendingGps:[],sortMode:'assigned',depot:null,publishedRoute:[],selected:null};
+const state={token:null,user:null,tokenExpires:0,rows:[],done:new Set(),gpsCaptured:new Set(),pendingCompletions:[],pendingGps:[],sortMode:'assigned',depot:null,publishedRoute:[],selected:null,pinPickerCancel:null};
 const storeKey='samruddhi_delivery_v2';
 const sessionKey='samruddhi_delivery_session_v1';
 function today(){return new Intl.DateTimeFormat('en-IN',{weekday:'long',day:'2-digit',month:'short',year:'numeric'}).format(new Date())}
@@ -121,7 +121,45 @@ async function flushPendingCompletions(){
 }
 function render(){const query=$('search').value.trim().toLowerCase();let rows=state.rows.filter(r=>[r.consumer,r.name,r.area,r.address,r.phone,r.booking].join(' ').toLowerCase().includes(query));rows=sortRows(rows);$('assignedCount').textContent=state.rows.length;$('pendingCount').textContent=state.rows.filter((r,i)=>!state.done.has(completionKey(r,i))).length;$('doneCount').textContent=state.rows.filter((r,i)=>state.done.has(completionKey(r,i))).length;if(!rows.length){$('bookingList').innerHTML='<div class="empty">No assigned booking matches your search.</div>';return}const frag=document.createDocumentFragment();rows.forEach((r,i)=>{const key=completionKey(r,state.rows.indexOf(r));const done=state.done.has(key);const el=document.createElement('article');el.className='booking'+(done?' done':'');const head=document.createElement('div');head.className='booking-head';const no=document.createElement('div');no.className='stopno';no.textContent=i+1;const details=document.createElement('div');details.innerHTML='';const customer=document.createElement('div');customer.className='customer';customer.textContent=r.name;const sub=document.createElement('div');sub.className='small';sub.textContent=`Consumer ${r.consumer||'—'}${r.area?' · '+r.area:''}`;details.append(customer,sub);head.append(no,details);const addr=document.createElement('div');addr.className='address';addr.textContent=r.address||'Address unavailable in booking data';const actions=document.createElement('div');actions.className='actions';const view=document.createElement('button');view.className='detail-btn';view.textContent='Details / GPS';view.onclick=()=>openDetail(r);const mark=document.createElement('button');mark.className='done-btn';const queued=state.pendingCompletions.some(x=>String(x.booking_key)===String(r.booking));mark.textContent=done?(queued?'Done · waiting to sync':'Delivered · synced'):'Mark Done';mark.disabled=done;mark.onclick=()=>completeBooking(r,key,mark);actions.append(view,mark);el.append(head,addr,actions);frag.append(el)});$('bookingList').replaceChildren(frag)}
 function openDetail(r){state.selected=r;$('stopDetail').replaceChildren();const title=document.createElement('h2');title.className='detail-title';title.textContent=r.name;const small=document.createElement('div');small.className='small';small.textContent=`Consumer ${r.consumer||'—'} · ${r.area||'Area not provided'}`;$('stopDetail').append(title,small);const grid=document.createElement('div');grid.className='detail-grid';const fields=[['Booking No.',r.booking],['Phone',r.phone],['Address',r.address],['Quantity',r.qty]];fields.forEach(([label,value])=>{const div=document.createElement('div'),span=document.createElement('span'),b=document.createElement('b');span.textContent=label;b.textContent=value||'—';div.append(span,b);grid.append(div)});$('stopDetail').append(grid);if(r.phone){const call=document.createElement('a');call.href='tel:'+r.phone.replace(/[^0-9+]/g,'');call.className='nav-button';call.textContent='Call customer';call.style.display='block';call.style.textAlign='center';call.style.textDecoration='none';call.style.padding='12px';call.style.borderRadius='12px';$('stopDetail').append(call)}const coords=getCoords(r.raw);if(coords||r.address){const nav=document.createElement('a');nav.href=coords?`https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}`:`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(r.address)}`;nav.target='_blank';nav.rel='noopener';nav.className='nav-button';nav.textContent=coords?'Navigate using Google Maps (GPS)':'Find address in Google Maps';nav.style.display='block';nav.style.textAlign='center';nav.style.textDecoration='none';nav.style.padding='12px';nav.style.borderRadius='12px';nav.style.marginTop='8px';$('stopDetail').append(nav)}const gps=document.createElement('section');gps.className='gps-panel';const gtitle=document.createElement('h3');gtitle.textContent='Capture customer GPS';const gdesc=document.createElement('p');gdesc.className='gps-status';const idx=state.rows.indexOf(r);const isDone=state.done.has(completionKey(r,idx));gdesc.textContent=r.manualGpsLookup?'GPS-only capture. This does not require a booking or change delivery status.':(isDone?'Capture a better customer location for office review. Existing office-approved coordinates are protected.':'Mark Done will attempt GPS automatically; use this button only if you want to capture location without marking delivered.');const btn=document.createElement('button');btn.className='gps-button';btn.textContent='Capture GPS only';btn.disabled=!r.consumer;btn.onclick=()=>captureGps(r,btn,r.manualGpsLookup?'delivery_manual_lookup':(isDone?'delivery_after_mark_delivered':'delivery_initial_mapping'));gps.append(gtitle,gdesc,btn);$('stopDetail').append(gps);$('stopDialog').showModal()}
-$('closeDialog').onclick=()=>$('stopDialog').close();$('stopDialog').addEventListener('click',e=>{if(e.target===$('stopDialog'))$('stopDialog').close()});
+$('closeDialog').onclick=()=>{if(state.pinPickerCancel)state.pinPickerCancel();$('stopDialog').close()};$('stopDialog').addEventListener('click',e=>{if(e.target===$('stopDialog')){if(state.pinPickerCancel)state.pinPickerCancel();$('stopDialog').close()}});
+
+function chooseGpsPin(r,best){
+ if(!window.L)return Promise.resolve(null);
+ return new Promise(resolve=>{
+  const dlg=$('pinPickerDialog'),mapEl=$('pinPickerMap');
+  $('pinPickerConsumer').textContent=(r.name||'Customer')+' · Consumer '+r.consumer;
+  $('pinPickerAccuracy').textContent='Device GPS accuracy: ±'+best.acc.toFixed(1)+' metres. Drag the pin or tap the map to select the actual main entrance.';
+  let map=null,marker=null,street=null,satellite=null,layer='street',finished=false;
+  const finish=value=>{
+   if(finished)return;finished=true;state.pinPickerCancel=null;
+   dlg.removeEventListener('cancel',onCancel);
+   if(map){map.remove();map=null;}
+   if(dlg.open)dlg.close();
+   resolve(value);
+  };
+  const onCancel=()=>finish(null);
+  state.pinPickerCancel=()=>finish(null);
+  dlg.addEventListener('cancel',onCancel,{once:true});
+  try{
+   dlg.showModal();
+   map=L.map(mapEl,{zoomControl:true,scrollWheelZoom:false}).setView([best.lat,best.lng],19);
+   street=L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',{maxZoom:22,attribution:'© OpenStreetMap contributors © CARTO'});
+   satellite=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Tiles © Esri'});
+   street.addTo(map);marker=L.marker([best.lat,best.lng],{draggable:true}).addTo(map);
+   const update=()=>{
+    const p=marker.getLatLng(),offset=distance({lat:best.lat,lng:best.lng},{lat:p.lat,lng:p.lng});
+    $('pinPickerCoords').textContent='Entrance pin offset: '+Math.round(offset)+' m from GPS'+(offset>500?' · Move within 500 m':'');
+    $('pinPickerCoords').classList.toggle('pin-too-far',offset>500);$('pinPickerConfirm').disabled=offset>500;
+   };
+   marker.on('dragend',update);map.on('click',e=>{marker.setLatLng(e.latlng);update();});
+   $('pinPickerStreet').onclick=()=>{if(layer!=='street'){map.removeLayer(satellite);street.addTo(map);layer='street';}};
+   $('pinPickerSatellite').onclick=()=>{if(layer!=='satellite'){map.removeLayer(street);satellite.addTo(map);layer='satellite';}};
+   $('pinPickerClose').onclick=()=>finish(null);$('pinPickerCancel').onclick=()=>finish(null);
+   $('pinPickerConfirm').onclick=()=>{const p=marker.getLatLng();finish({lat:p.lat,lng:p.lng});};
+   update();setTimeout(()=>map&&map.invalidateSize(),180);
+  }catch(e){finish(null);}
+ });
+}
 async function captureGps(r,button,captureMode='delivery_initial_mapping',options={}){
  if(!navigator.geolocation){const msg='Location permission or GPS is unavailable on this phone.';if(!options.silent)alert(msg);return {saved:false,message:msg}}
  const detail=$('stopDetail');
@@ -157,9 +195,13 @@ async function captureGps(r,button,captureMode='delivery_initial_mapping',option
   });
   if(!best||best.acc>30)throw new Error('Best GPS accuracy was '+Math.round(best?.acc||0)+' m. Need 30 m or better. Keep Location enabled and retry in a more open place.');
   const accuracy=best.acc;
-  const payload={booking_key:String(r.booking||''),consumer_no:r.consumer,raw_lat:best.lat,raw_lng:best.lng,pin_lat:best.lat,pin_lng:best.lng,lat:best.lat,lng:best.lng,acc:accuracy,
-   // Send only the selected best fix to the server. Other watch readings are used to
-   // choose the best fix locally, not averaged or rejected just because the user moved.
+  let pin={lat:best.lat,lng:best.lng};
+  // Every GPS capture pauses for an entrance-pin confirmation. Silent mode only suppresses alerts.
+  const selected=await chooseGpsPin(r,best);
+  if(!selected){if(status)status.textContent='Map selection cancelled. No location was submitted.';button.textContent='Capture GPS again';return {saved:false,message:'Pin selection cancelled.'};}
+  pin=selected;
+  const payload={booking_key:String(r.booking||''),consumer_no:r.consumer,raw_lat:best.lat,raw_lng:best.lng,pin_lat:pin.lat,pin_lng:pin.lng,lat:pin.lat,lng:pin.lng,acc:accuracy,
+   // Keep the device GPS fix separate from the entrance pin selected on the map.
    readings:[{lat:best.lat,lng:best.lng,acc:accuracy,ts:best.ts}],capture_mode:captureMode};
   try{
    const result=await api({action:'gps_capture',...payload});

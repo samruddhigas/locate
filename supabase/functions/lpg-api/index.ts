@@ -553,17 +553,15 @@ Deno.serve(async (req) => {
       const pinLat = Number(body.pin_lat ?? body.lat), pinLng = Number(body.pin_lng ?? body.lng);
       const acc = Number(body.acc);
       const validCoord = (a:number,b:number) => Number.isFinite(a) && a >= -90 && a <= 90 && Number.isFinite(b) && b >= -180 && b <= 180;
-      if (!/^[A-Za-z0-9_-]{40,100}$/.test(linkToken) || !validCoord(rawLat,rawLng) || !validCoord(pinLat,pinLng) || !Number.isFinite(acc) || acc < 0 || acc > 5)
-        return Response.json({error:"Invalid capture request: precise GPS accuracy within 5 metres is required"},{status:400,headers:cors});
+      if (!/^[A-Za-z0-9_-]{40,100}$/.test(linkToken) || !validCoord(rawLat,rawLng) || !validCoord(pinLat,pinLng) || !Number.isFinite(acc) || acc <= 0 || acc > 30)
+        return Response.json({error:"Invalid capture request: a fresh GPS fix with accuracy within 30 metres is required"},{status:400,headers:cors});
       const readings = Array.isArray(body.readings) ? body.readings.slice(-20) : [];
       const cleanReadings = readings.map((r:any) => ({lat:Number(r?.lat),lng:Number(r?.lng),acc:Number(r?.acc),ts:Number(r?.ts)}))
-        .filter((r:any) => validCoord(r.lat,r.lng) && Number.isFinite(r.acc) && r.acc >= 0 && r.acc <= 5 && Number.isFinite(r.ts) && Math.abs(Date.now()-r.ts) <= 5*60*1000);
-      if (cleanReadings.length < 5)
-        return Response.json({error:"At least five recent precise GPS readings are required"},{status:400,headers:cors});
-      const centerLat=cleanReadings.reduce((a:number,r:any)=>a+r.lat,0)/cleanReadings.length;
-      const centerLng=cleanReadings.reduce((a:number,r:any)=>a+r.lng,0)/cleanReadings.length;
-      const spread=Math.max(...cleanReadings.map((r:any)=>Math.hypot((r.lat-centerLat)*111320,(r.lng-centerLng)*111320*Math.cos(centerLat*Math.PI/180))));
-      if (spread > 5) return Response.json({error:"GPS readings are not stable. Please capture again while standing still."},{status:400,headers:cors});
+        .filter((r:any) => validCoord(r.lat,r.lng) && Number.isFinite(r.acc) && r.acc > 0 && r.acc <= 30 && Number.isFinite(r.ts) && Math.abs(Date.now()-r.ts) <= 5*60*1000);
+      if (cleanReadings.length < 1)
+        return Response.json({error:"At least one recent GPS fix is required"},{status:400,headers:cors});
+      if (cleanReadings.some((r:any) => r.acc > 30))
+        return Response.json({error:"GPS reading accuracy exceeds 30 metres"},{status:400,headers:cors});
       const pinOffset=Math.hypot((pinLat-rawLat)*111320,(pinLng-rawLng)*111320*Math.cos(rawLat*Math.PI/180));
       if (pinOffset > 500) return Response.json({error:"The entrance pin is too far from the captured GPS position. Please check the correct house."},{status:400,headers:cors});
       const tokenHash=await sha256Hex(linkToken);

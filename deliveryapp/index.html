@@ -4,7 +4,8 @@
 <base href="./">
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0e6b55"><meta name="description" content="Samruddhi LPG delivery field app">
-<link rel="manifest" href="manifest.json"><link rel="stylesheet" href="app.css">
+<link rel="manifest" href="manifest.json"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<link rel="stylesheet" href="app.css">
 <title>Samruddhi DeliveryApp</title>
 </head>
 <body>
@@ -27,5 +28,14 @@
   <footer>Use HPCL records as the official delivery confirmation source.</footer>
 </div>
 <dialog id="stopDialog"><div class="dialog-content"><button id="closeDialog" class="close" aria-label="Close">×</button><div id="stopDetail"></div></div></dialog>
+<dialog id="pinPickerDialog"><div class="pin-picker-dialog-content">
+  <div class="pin-picker-heading"><div><b>Confirm customer entrance</b><div id="pinPickerConsumer" class="small"></div></div><button id="pinPickerClose" class="quiet" type="button" aria-label="Cancel map selection">×</button></div>
+  <div id="pinPickerAccuracy" class="small"></div>
+  <div class="pin-map-controls"><button id="pinPickerStreet" class="secondary" type="button">Road map</button><button id="pinPickerSatellite" class="secondary" type="button">Satellite</button></div>
+  <div id="pinPickerMap" class="pin-map" aria-label="Map to select customer entrance"></div>
+  <div id="pinPickerCoords" class="pin-map-coords"></div>
+  <div class="pin-map-actions"><button id="pinPickerCancel" class="secondary" type="button">Cancel</button><button id="pinPickerConfirm" class="primary" type="button">Confirm entrance pin</button></div>
+</div></dialog>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script src="app.js"></script>
 </body></html>
