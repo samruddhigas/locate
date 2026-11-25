@@ -3,6 +3,7 @@ const API_URL='https://uggqsvgxjhvdfkddqzyh.supabase.co/functions/v1/lpg-api';
 const PUBLISHABLE_KEY='sb_publishable_gvys5Rb8ugEbQrBk2unNQQ_6ZmJSV4q';
 const $=id=>document.getElementById(id);
 const state={token:null,user:null,tokenExpires:0,rows:[],done:new Set(),gpsCaptured:new Set(),pendingCompletions:[],pendingGps:[],sortMode:'assigned',depot:null,publishedRoute:[],selected:null,pinPickerCancel:null};
+let _gpsFix=null,_gpsWatchId=null;
 const storeKey='samruddhi_delivery_v2';
 const sessionKey='samruddhi_delivery_session_v1';
 function today(){return new Intl.DateTimeFormat('en-IN',{weekday:'long',day:'2-digit',month:'short',year:'numeric'}).format(new Date())}
@@ -16,7 +17,7 @@ function restore(){
   const session=JSON.parse(sessionStorage.getItem(sessionKey)||'{}');
   localStorage.setItem(storeKey,JSON.stringify({done:[...state.done],gpsCaptured:[...state.gpsCaptured],pendingCompletions:state.pendingCompletions,pendingGps:state.pendingGps}));
   if(session.user&&session.token&&Number(session.expires)>Date.now()&&session.user.role==='delivery'){
-   state.user=session.user;state.token=session.token;state.tokenExpires=Number(session.expires);showHome();loadBookings(false);
+   state.user=session.user;state.token=session.token;state.tokenExpires=Number(session.expires);showHome();startGPSWatch();loadBookings(false);
   }else{sessionStorage.removeItem(sessionKey)}
  }catch{sessionStorage.removeItem(sessionKey)}
 }
@@ -26,9 +27,9 @@ function persist(){
  else sessionStorage.removeItem(sessionKey);
 }
 async function api(body,token=state.token){const headers={'Content-Type':'application/json','apikey':PUBLISHABLE_KEY};if(token)headers['x-session-token']=token;const response=await fetch(API_URL,{method:'POST',headers,body:JSON.stringify(body)});let data;try{data=await response.json()}catch{throw new Error(`Server returned HTTP ${response.status}`)}if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);if(data.error)throw new Error(data.error);return data}
-$('loginForm').addEventListener('submit',async e=>{e.preventDefault();$('loginError').textContent='';const btn=e.submitter;btn.disabled=true;btn.textContent='Signing in…';try{const result=await api({action:'login',name:$('username').value.trim(),pin:$('pin').value},null);if(!result.token||!result.user)throw new Error('Login response was incomplete');if(result.user.role!=='delivery')throw new Error('This app is only for delivery accounts. Office accounts should use the Dashboard.');state.token=result.token;state.user=result.user;state.tokenExpires=Date.now()+Number(result.expiresIn||28800)*1000;persist();showHome();await loadBookings(true)}catch(err){$('loginError').textContent=err.message||'Login failed'}finally{btn.disabled=false;btn.textContent='Sign in'}});
-function showHome(){$('loginView').hidden=true;$('homeView').hidden=false;$('welcome').textContent=`Hello, ${state.user.name}`}
-$('logoutBtn').onclick=async()=>{if(state.pendingCompletions.length||state.pendingGps.length){if(!navigator.onLine){alert('There are GPS or delivery updates waiting to sync. Reconnect to the internet before logging out.');return}await flushPendingCompletions();if(state.pendingCompletions.length||state.pendingGps.length){alert('Some GPS or delivery updates could not sync. Keep this app signed in and contact the office before logging out.');return}}state.token=null;state.user=null;state.tokenExpires=0;state.rows=[];state.done.clear();state.gpsCaptured.clear();state.publishedRoute=[];state.depot=null;state.sortMode='assigned';state.pendingCompletions=[];state.pendingGps=[];sessionStorage.removeItem(sessionKey);localStorage.removeItem(storeKey);$('homeView').hidden=true;$('loginView').hidden=false;$('pin').value=''};
+$('loginForm').addEventListener('submit',async e=>{e.preventDefault();$('loginError').textContent='';const btn=e.submitter;btn.disabled=true;btn.textContent='Signing in…';try{const result=await api({action:'login',name:$('username').value.trim(),pin:$('pin').value},null);if(!result.token||!result.user)throw new Error('Login response was incomplete');if(result.user.role!=='delivery')throw new Error('This app is only for delivery accounts. Office accounts should use the Dashboard.');state.token=result.token;state.user=result.user;state.tokenExpires=Date.now()+Number(result.expiresIn||28800)*1000;persist();showHome();startGPSWatch();await loadBookings(true)}catch(err){$('loginError').textContent=err.message||'Login failed'}finally{btn.disabled=false;btn.textContent='Sign in'}});
+function showHome(){$('loginView').hidden=true;$('homeView').hidden=false;$('welcome').textContent=`Hello, ${state.user.name}`;startGPSWatch()}
+$('logoutBtn').onclick=async()=>{stopGPSWatch();if(state.pendingCompletions.length||state.pendingGps.length){if(!navigator.onLine){alert('There are GPS or delivery updates waiting to sync. Reconnect to the internet before logging out.');return}await flushPendingCompletions();if(state.pendingCompletions.length||state.pendingGps.length){alert('Some GPS or delivery updates could not sync. Keep this app signed in and contact the office before logging out.');return}}state.token=null;state.user=null;state.tokenExpires=0;state.rows=[];state.done.clear();state.gpsCaptured.clear();state.publishedRoute=[];state.depot=null;state.sortMode='assigned';state.pendingCompletions=[];state.pendingGps=[];sessionStorage.removeItem(sessionKey);localStorage.removeItem(storeKey);$('homeView').hidden=true;$('loginView').hidden=false;$('pin').value=''};
 $('refreshBtn').onclick=()=>loadBookings(true);$('sortBtn').disabled=true;$('sortBtn').textContent='Route order unavailable';$('sortBtn').onclick=()=>{if(state.publishedRoute.length)state.sortMode=state.sortMode==='published'?'assigned':'published';else state.sortMode=state.sortMode==='assigned'?'optimized':'assigned';updateRouteControl();render()};$('search').addEventListener('input',render);
 $('gpsSearchBtn').onclick=searchGpsConsumers;
 $('gpsSearch').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();searchGpsConsumers()}});
@@ -56,6 +57,18 @@ async function searchGpsConsumers(){
 function pick(row,keys){for(const k of keys){if(row[k]!==undefined&&row[k]!==null&&String(row[k]).trim()!=='')return row[k]}return ''}
 function rowNormalize(r){const consumer=pick(r,['consumer_no','consumer_number','consumerNo','consumer']);const name=pick(r,['consumer_name','name','customer_name']);const area=pick(r,['area','delivery_area','deliveryArea']);const address=pick(r,['address','consumer_address','consumerAddress']);const phone=pick(r,['mobile','mobile_no','phone','mobile_number']);const booking=pick(r,['booking_no','booking_number','bookingNo','order_no','order_number','id']);const qty=pick(r,['qty','quantity','order_quantity','cylinder_qty']);return {raw:r,consumer:String(consumer||''),name:String(name||'Customer'),area:String(area||''),address:String(address||''),phone:String(phone||''),booking:String(booking||''),qty:String(qty||'')}}
 async function loadBookings(showMessage=true){if(!state.token)return;const btn=$('refreshBtn');btn.disabled=true;btn.textContent='Loading…';$('message').textContent='Fetching your assigned bookings from server…';try{let rows=[],offset=0;for(let page=0;page<15;page++){const result=await api({action:'db',table:'lpg_pending',op:'select',limit:1000,offset,orderBy:'consumer_no'});const chunk=Array.isArray(result.data)?result.data:[];rows.push(...chunk);if(chunk.length<1000)break;offset+=chunk.length}const normalized=rows.map(rowNormalize);state.rows=normalized;normalized.forEach((r,i)=>{if(r.raw.lat!=null&&r.raw.lng!=null&&Number.isFinite(Number(r.raw.lat))&&Number.isFinite(Number(r.raw.lng)))state.gpsCaptured.add(completionKey(r,i))});sessionStorage.setItem('samruddhi_delivery_bookings_v1',JSON.stringify(rows));try{const completed=await api({action:'delivery_completion',op:'list'});const serverKeys=new Set((completed.data||[]).map(x=>'booking:'+String(x.booking_key)));for(const r of normalized){const key=completionKey(r,state.rows.indexOf(r));if(serverKeys.has(key))state.done.add(key)} }catch(syncErr){$('message').textContent='Bookings loaded; central completion status could not be refreshed: '+syncErr.message}try{const savedLocations=await api({action:'locations_manage',op:'list'});state.depot=(savedLocations.locations||[]).find(x=>x.is_default)|| (savedLocations.locations||[]).find(x=>x.kind==='depot')||null}catch(_){state.depot=null}try{const published=await api({action:'route_manage',op:'list',route_date:localDateKey()});state.publishedRoute=published.stops||[];if(state.publishedRoute.length)state.sortMode='published';else if(state.sortMode==='published')state.sortMode='assigned'}catch(_){state.publishedRoute=[]}updateRouteControl();await flushPendingCompletions();persist();$('message').textContent=showMessage?`Updated ${state.rows.length} assigned booking(s).`:`${state.rows.length} booking(s) loaded.`;render()}catch(err){$('message').textContent=err.message;if(!state.rows.length){try{const cached=JSON.parse(sessionStorage.getItem('samruddhi_delivery_bookings_v1')||'[]');if(Array.isArray(cached)&&cached.length){state.rows=cached.map(rowNormalize);$('message').textContent='Offline mode · showing the last bookings loaded in this app session. New changes will sync when online.';render()}else $('bookingList').innerHTML='<div class="empty error-card">Could not load assigned bookings. Connect to the internet and refresh. Any queued delivery updates remain saved on this phone.</div>'}catch(_){$('bookingList').innerHTML='<div class="empty error-card">Could not load assigned bookings. Connect to the internet and refresh.</div>'}}if(/Session expired|invalid|expired/i.test(err.message)){$('message').textContent='Session expired. Please log in again.';state.token=null;state.user=null;state.tokenExpires=0;sessionStorage.removeItem(sessionKey);localStorage.setItem(storeKey,JSON.stringify({done:[...state.done],gpsCaptured:[...state.gpsCaptured]}));$('homeView').hidden=true;$('loginView').hidden=false;$('loginError').textContent='Your session expired. Please sign in again.'}}finally{btn.disabled=false;btn.textContent='↻ Refresh bookings'}}
+function startGPSWatch(){
+ if(!navigator.geolocation||_gpsWatchId!==null)return;
+ try{
+  _gpsWatchId=navigator.geolocation.watchPosition(pos=>{
+   const c=pos.coords,acc=Number(c.accuracy),ts=Number(pos.timestamp)||Date.now();
+   if(!Number.isFinite(acc)||acc<=0||acc>1000||Date.now()-ts>15000)return;
+   const fix={lat:Number(c.latitude),lng:Number(c.longitude),acc,ts};
+   if(Number.isFinite(fix.lat)&&Number.isFinite(fix.lng)&&(! _gpsFix||fix.acc<=_gpsFix.acc||Date.now()-_gpsFix.ts>10000))_gpsFix=fix;
+  },()=>{}, {enableHighAccuracy:true,maximumAge:3000,timeout:12000});
+ }catch(_){_gpsWatchId=null;}
+}
+function stopGPSWatch(){if(_gpsWatchId!==null&&navigator.geolocation){navigator.geolocation.clearWatch(_gpsWatchId);_gpsWatchId=null;}_gpsFix=null;}
 function distance(a,b){const rad=x=>x*Math.PI/180;const R=6371000;const dLat=rad(b.lat-a.lat),dLon=rad(b.lng-a.lng);const x=Math.sin(dLat/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLon/2)**2;return 2*R*Math.atan2(Math.sqrt(x),Math.sqrt(1-x))}
 function getCoords(r){const rawLat=pick(r,['lat','latitude','gps_lat','location_lat']),rawLng=pick(r,['lng','longitude','gps_lng','location_lng']);if(rawLat===''||rawLng==='')return null;const lat=Number(rawLat),lng=Number(rawLng);if(Number.isFinite(lat)&&lat>=-90&&lat<=90&&Number.isFinite(lng)&&lng>=-180&&lng<=180)return {lat,lng};return null}
 function localDateKey(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
@@ -176,8 +189,11 @@ async function captureGps(r,button,captureMode='delivery_initial_mapping',option
  try{
   // Continuously request fresh GNSS/high-accuracy fixes. Never average coordinates:
   // while the delivery person is moving, averaging would place the customer between locations.
-  const warmFix=(typeof _gps!=='undefined'&&_gps&&Number.isFinite(Number(_gps.lat))&&Number.isFinite(Number(_gps.lng))&&Number(_gps.acc)>0&&Number(_gps.acc)<=30&&Date.now()-Number(_gps.ts||0)<=10000)
-   ?{lat:Number(_gps.lat),lng:Number(_gps.lng),acc:Number(_gps.acc),ts:Number(_gps.ts)}:null;
+  // Reuse the continuously warmed GNSS fix whenever it is recent and sufficiently accurate.
+  // This removes the per-delivery cold-start delay without pretending a weak fix is precise.
+  const warmFix=(_gpsFix&&Number.isFinite(Number(_gpsFix.lat))&&Number.isFinite(Number(_gpsFix.lng))&&
+   Number(_gpsFix.acc)>0&&Number(_gpsFix.acc)<=30&&Date.now()-Number(_gpsFix.ts||0)<=10000)
+   ?{lat:Number(_gpsFix.lat),lng:Number(_gpsFix.lng),acc:Number(_gpsFix.acc),ts:Number(_gpsFix.ts)}:null;
   const best=warmFix||await new Promise((resolve,reject)=>{
    let watchId=null,deadline=null,bestFix=null,finished=false;
    const finish=(err)=>{
@@ -186,7 +202,7 @@ async function captureGps(r,button,captureMode='delivery_initial_mapping',option
     if(deadline!==null)clearTimeout(deadline);
     if(err)reject(err);else resolve(bestFix);
    };
-   deadline=setTimeout(()=>finish(bestFix&&bestFix.acc<=30?null:new Error('GPS accuracy is '+Math.round(bestFix?.acc||0)+' m. Need 30 m or better; retry in a more open place.')),5000);
+   deadline=setTimeout(()=>finish(bestFix&&bestFix.acc<=30?null:new Error('GPS signal is weak ('+Math.round(bestFix?.acc||0)+' m). Delivery can still be saved; GPS will be retried when signal improves.')),3000);
    try{
     watchId=navigator.geolocation.watchPosition(pos=>{
      const c=pos.coords,acc=Number(c.accuracy);
