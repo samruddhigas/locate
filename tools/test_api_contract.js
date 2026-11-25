@@ -74,6 +74,9 @@ assert.ok(api.includes('acc > 30'), "Server must enforce a realistic 30m maximum
 assert.ok(api.includes('"delivery_manual_lookup"'), "Server must permit GPS-only consumer lookup for delivery accounts");
 assert.ok(api.includes('gps_status: hasUsableGps ? "captured_pending_location_check" : "not_captured"'), "Completion must record GPS status separately from delivery status");
 assert.ok(api.includes('record_lpg_delivery_location_observation'), "Each completed delivery must run server-side repeated-location verification");
+assert.ok(api.includes("48 * 60 * 60 * 1000"), "Delivery GPS queue must accept delayed captures within the 48-hour completion window");
+assert.ok(api.includes("capturedAt=new Date(capturedAtMs).toISOString()"), "Offline GPS sync must preserve the original device capture timestamp");
+assert.ok(api.includes('onConflict:"booking_key,consumer_no"'), "Delivery GPS history must be idempotent by booking and consumer");
 assert.ok(api.includes('lpg_gps_temporary'), "Temporary verified pins must be returned to route planning");
 assert.ok(api.includes('temporary_approved'), "Three consistent delivery visits must produce a route-eligible temporary pin");
 assert.ok(api.includes('same_day_repeat'), "Multiple bookings on one day must not count as multiple physical visits");
