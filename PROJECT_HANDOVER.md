@@ -505,3 +505,107 @@ If the handover is not available in the new chat, search the ChatGPT Library for
 ### Handover synchronization
 - GitHub master updated: Yes — canonical customer routing release documented.
 - ChatGPT Library reference updated: Yes — synchronized to the GitHub master content on 26 November 2026.
+
+---
+
+## 16. 2026-11-26 — Repeated-delivery location verification, deviations, GPS responsiveness and repository sync
+
+**Code baseline for this update:** `9c0d114149783393c7ee7367a5d799ceb12d57b6` (the handover commit follows).  
+**Production backend:** `lpg-api` v49 ACTIVE; `deliveryapp` v3 ACTIVE.  
+**Standalone DeliveryApp service-worker cache:** `samruddhi-delivery-v17`.
+
+### Implemented in production backend and source
+
+- Added `lpg_gps_temporary`, `lpg_delivery_location_observations`, and `lpg_delivery_location_exceptions`. Existing `lpg_gps` office-approved coordinates remain the permanent source and are not overwritten by delivery observations.
+- Every completed booking can contribute one fresh visit observation, tied to the assigned delivery account and booking key. Retries are idempotent.
+- Multiple bookings for the same consumer on the same local calendar day count as **one physical visit**. A same-day repeat does not increase the verification count.
+- When no permanent office-approved pin exists:
+  1. First valid visit creates a candidate.
+  2. Second consistent visit on a different local calendar day, within 20 metres of the temporary cluster and with reported accuracy no worse than 30 metres, makes it provisional.
+  3. Third consistent visit on a different local calendar day makes it **temporary_approved** and route-eligible.
+- A visit more than 20 metres from the temporary cluster is recorded as an outlier exception and does not move the temporary pin.
+- When a permanent office-approved pin exists, it always takes precedence:
+  - Up to 30 metres: matched.
+  - More than 30 metres and up to 50 metres: warning exception.
+  - More than 50 metres: deviation exception.
+- The authenticated office API exposes the exception queue and allows admin/staff to resolve an exception with a review note.
+- Office GPS sync keeps temporary pins in a separate state from permanent approvals. The route planner and route publisher can use a 3-visit temporary pin when no permanent approved pin exists; they do not promote it to a permanent master pin.
+- Delivery completion remains possible when GPS is unavailable. A missing or weak fix is recorded as such; the app does not falsely claim GPS verification or block a real-world handover.
+- If a completion was saved but its location check failed transiently, a retry can finish the location check without duplicating the delivery completion.
+
+### GPS capture responsiveness
+
+- Standalone DeliveryApp, Dashboard-generated DeliveryApp, and the customer capture page now accept the first fresh usable fix at 30 metres or better instead of waiting for a 10-metre fix.
+- GPS capture uses a short bounded wait (up to about 5 seconds), permits a recent cached reading (up to 15 seconds old), and continues to show the actual reported accuracy.
+- Mark Done obtains a new visit reading for that delivery; an earlier mapping capture is not reused as evidence for a later delivery.
+- The delivery app and Dashboard retain the draggable entrance pin, tap-to-place, road/satellite map layers, and the 500-metre pin-offset guard. Raw GPS coordinates and the selected entrance pin remain distinct.
+- **Accuracy limitation:** no browser app can guarantee a 7-metre fix on every phone or at every building. If a fresh reading does not meet the 30-metre acceptance limit within the short wait, the app reports the actual limitation and can still save the delivery without claiming a verified location.
+- The map uses Leaflet with CARTO/OpenStreetMap road tiles and Esri satellite imagery. Google Maps is used for navigation links; these are not Google Maps map tiles. Actual Google Maps JavaScript tiles would require an authorized Google Maps API key and applicable billing.
+
+### Automatic repository synchronization
+
+- `samruddhigas/SAMRUDDHI-DELIVERY-APP` now has a scheduled GitHub Actions mirror workflow that checks the canonical public `samruddhigas/locate` `main` branch every 5 minutes, plus a manual workflow-dispatch option.
+- It mirrors `deliveryapp/index.html`, `app.js`, `app.css`, `sw.js`, the active `lpg-api/index.ts`, and the tracked GPS migrations. It uses the private repository's own `GITHUB_TOKEN`; no Supabase secrets or personal token are embedded in source.
+- The canonical source remains `samruddhigas/locate` `main`. The private repository is a mirror, not a competing source of truth.
+- **Verification status:** workflow is installed and the current frontend/backend/migration files were copied to the private repository during this update. The first scheduled automation run and subsequent unattended sync still require run-history confirmation.
+
+### Database migrations and verification
+
+Applied to the active production project `uggqsvgxjhvdfkddqzyh`:
+- `20261124101003_allow_delivery_completion_with_optional_gps` — now reconciled into source control.
+- `20261125203518_delivery_location_verification_and_exceptions`.
+- `20261125204314_deduplicate_same_day_location_evidence`.
+- `20261125204357_extend_offline_location_observation_window` — permits queued observations to sync within the same 48-hour completion window.
+
+Synthetic SQL checks were run inside rollback transactions:
+- Three consistent visits produced candidate → provisional → temporary_approved.
+- A second booking on the same local day returned same_day_repeat and did not increase the count.
+- A visit 111.19 metres from a test approved pin produced a deviation exception.
+- Test rows were rolled back; no synthetic consumer or delivery rows were retained.
+
+Exact production counts checked after the migrations:
+- `lpg_masters`: 10,988
+- `lpg_delivered`: 8,284
+- `lpg_pending`: 254
+- `lpg_gps`: 0
+- `lpg_gps_history`: 0
+- `lpg_delivery_completions`: 4
+- `lpg_delivery_location_observations`: 0
+- `lpg_delivery_location_exceptions`: 0
+
+No production customer master, delivered-cylinder, pending-booking, or completion rows were modified by these tests or migrations.
+
+### Status categories
+
+**Completed and verified**
+- Production schema and location-verification RPC deployed; Edge Function v49 is ACTIVE.
+- Candidate/provisional/temporary approval, same-day deduplication, and >50-metre deviation behavior passed rollback-only SQL tests.
+- Route backend accepts permanent approved pins or 3-visit temporary pins, with permanent pins taking precedence.
+- Dashboard route data separates temporary pins from permanent approved pins; exception review controls are present.
+- Public static validation passed for code baseline `9c0d114149783393c7ee7367a5d799ceb12d57b6`.
+- Existing production data counts were checked and remained unchanged.
+
+**Implemented but not yet verified end-to-end**
+- Authenticated delivery-app completion against a real booking and real device GPS.
+- Authenticated office exception-list/review workflow in the live Dashboard.
+- First scheduled private-repository mirror run.
+- Public Pages deployment and installed PWA cache refresh after the latest code commit.
+
+**Pending**
+- Real Android phone testing of GPS permissions, warm/cold GNSS acquisition, map tile loading, pin dragging/tap placement, offline queue sync, and repeated delivery verification.
+- Real customer WhatsApp-link capture test on an Android phone.
+- Verify that a temporary-verified pin appears in the office route planner and can be published to a delivery user's route using live authenticated sessions.
+
+**Known limitations**
+- No physical Android handset or Android emulator was attached to this development session. CI/static checks and SQL behavior tests are not a substitute for field testing; no claim of actual Android-device verification is made.
+- A 30-metre acceptance threshold is a practical guard, not a promise of 30-metre accuracy in all conditions. Indoor/urban GPS can remain weak.
+- Route ordering uses the existing straight-line optimizer. Google Maps navigation opens for road directions; the optimizer itself is not a live road-network routing engine.
+- No real consumer GPS history exists yet, so the repeated-visit workflow has been tested with rollback-only synthetic data, not real customer deliveries.
+
+### Mandatory ongoing rules
+- Keep permanent approved coordinates, temporary route coordinates, raw GPS fixes, and manually adjusted entrance pins separate.
+- Never count multiple bookings for one consumer on the same local day as multiple independent location confirmations.
+- Never silently move a permanent approved pin or replace a temporary cluster with a conflicting visit.
+- Preserve exception history and the delivery completion record even when the location check needs office review.
+- Keep the private DeliveryApp repository synchronized from `locate/main`; keep this GitHub handover as master and update the ChatGPT Library reference from the same content after every verified change.
+- Never mark Android field testing as complete without a real device test and recorded result.
