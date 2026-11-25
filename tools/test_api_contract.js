@@ -74,6 +74,11 @@ assert.ok(api.includes('acc > 30'), "Server must enforce a realistic 30m maximum
 assert.ok(api.includes('"delivery_manual_lookup"'), "Server must permit GPS-only consumer lookup for delivery accounts");
 assert.ok(api.includes('gps_status: hasUsableGps ? "captured_pending_location_check" : "not_captured"'), "Completion must record GPS status separately from delivery status");
 assert.ok(api.includes('record_lpg_delivery_location_observation'), "Each completed delivery must run server-side repeated-location verification");
+assert.ok(api.includes('lpg_gps_temporary'), "Temporary verified pins must be returned to route planning");
+assert.ok(api.includes('temporary_approved'), "Three consistent delivery visits must produce a route-eligible temporary pin");
+assert.ok(api.includes('same_day_repeat'), "Multiple bookings on one day must not count as multiple physical visits");
+assert.ok(dashboard.includes("temporaryConsumerGPS"), "Office route optimization must keep temporary pins separate from permanent approvals");
+assert.ok(dashboard.includes("temporary_consumer_gps"), "Office route publishing must include eligible temporary GPS stops");
 assert.ok(api.includes('delivery_location_exceptions'), "Office must have an authenticated location-exception review queue");
 assert.ok(api.includes('temporary_approved'), "Three consistent delivery visits must produce a route-eligible temporary pin");
 assert.ok(dashboard.includes("async function publishSelectedRoute()"), "Office dashboard must provide route publishing");
