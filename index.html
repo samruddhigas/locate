@@ -426,10 +426,10 @@ function startCapture(){
   document.getElementById('shareBtn').innerHTML='<span class="loading-spinner"></span><span>Finding your best GPS…<span class="btn-marathi">अचूक लोकेशन शोधत आहे…</span></span>';
   document.getElementById('successCard').style.display='none';document.getElementById('errorCard').style.display='none';
   document.getElementById('pinMapPanel').style.display='none';document.getElementById('accMeter').classList.add('visible');
-  _watchId=navigator.geolocation.watchPosition(onGPSReading,onGPSError,{enableHighAccuracy:true,timeout:30000,maximumAge:0});
+  _watchId=navigator.geolocation.watchPosition(onGPSReading,onGPSError,{enableHighAccuracy:true,timeout:8000,maximumAge:15000});
   // Prefer <=10 m. If the phone cannot reach that outdoors/in a building, accept its
   // best fresh fix up to 30 m after 25 seconds instead of forcing repeated retries.
-  _captureTimer=setTimeout(()=>{if(_capturing){if(_bestFix&&_bestFix.acc<=30)showEntranceMap(_bestFix);else{_capturing=false;stopWatch();document.getElementById('accMeter').classList.remove('visible');showError('GPS signal is weak (best '+Math.round(_bestFix?.acc||0)+' m). Turn on Precise location and try near an open area.');resetBtn();}}},25000);
+  _captureTimer=setTimeout(()=>{if(_capturing){if(_bestFix&&_bestFix.acc<=30)showEntranceMap(_bestFix);else{_capturing=false;stopWatch();document.getElementById('accMeter').classList.remove('visible');showError('GPS signal is weak (best '+Math.round(_bestFix?.acc||0)+' m). Turn on Precise location and try near an open area.');resetBtn();}}},5000);
 }
 function readingCentre(a){return{lat:a.reduce((s,r)=>s+r.lat,0)/a.length,lng:a.reduce((s,r)=>s+r.lng,0)/a.length};}
 function pointDistance(a,b,c,d){const R=6371000,x=Math.sin((c-a)*Math.PI/360)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin((d-b)*Math.PI/360)**2;return 2*R*Math.asin(Math.sqrt(x));}
@@ -440,7 +440,7 @@ function onGPSReading(pos){
   const fix={lat,lng,acc,ts:Number(pos.timestamp)||Date.now()};
   if(!_bestFix||acc<_bestFix.acc)_bestFix=fix;
   updateAccMeter(_bestFix.acc);
-  if(_bestFix.acc<=10)showEntranceMap(_bestFix);
+  if(_bestFix.acc<=30)showEntranceMap(_bestFix);
 }
 function onGPSError(err){
   if(!_capturing)return;
