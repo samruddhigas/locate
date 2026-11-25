@@ -7250,7 +7250,7 @@ function getBaseUrl() {
 }
 function getLocLink(consumerNo) { return null; /* Legacy c= links are intentionally disabled; use secure one-time tokens. */ }
 function consumerCapturePageUrl() {
-  return getBaseUrl() + '/consumer-location/';
+  return getBaseUrl() + '/';
 }
 async function sendGpsLinkToWhatsApp(consumerNo){
   if(!AUTH?.token||!['admin','staff'].includes(AUTH.role)){showToastMain('Office login required');return;}
