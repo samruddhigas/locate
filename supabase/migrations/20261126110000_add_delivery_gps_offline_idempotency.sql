@@ -6,5 +6,5 @@ alter table public.lpg_gps_history
 
 create unique index if not exists lpg_gps_history_booking_consumer_uidx
   on public.lpg_gps_history (booking_key, consumer_no)
-  where booking_key is not null and btrim(booking_key) <> '';
+  ;
 
