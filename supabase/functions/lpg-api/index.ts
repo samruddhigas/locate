@@ -988,6 +988,9 @@ Deno.serve(async (req) => {
       const rawLat = Number(body.raw_lat ?? body.lat);
       const rawLng = Number(body.raw_lng ?? body.lng);
       const acc = Number(body.acc ?? 0);
+      const captureMode = String(body.capture_mode || "initial_mapping").slice(0, 40);
+      const bookingKey = String(body.booking_key || "").trim();
+      const gpsMaxAgeMs = user.role === "delivery" ? 48 * 60 * 60 * 1000 : 5 * 60 * 1000;
       if (!consumerNo || consumerNo.length > 40 || !Number.isFinite(lat) || lat < -90 || lat > 90 ||
           !Number.isFinite(lng) || lng < -180 || lng > 180 || !Number.isFinite(rawLat) || rawLat < -90 || rawLat > 90 ||
           !Number.isFinite(rawLng) || rawLng < -180 || rawLng > 180 || !Number.isFinite(acc) || acc < 0 || acc > 30) {
@@ -996,9 +999,14 @@ Deno.serve(async (req) => {
       const pinOffsetMeters=Math.hypot((lat-rawLat)*111320,(lng-rawLng)*111320*Math.cos(rawLat*Math.PI/180));
       if(pinOffsetMeters>500) return Response.json({error:"Entrance pin is too far from the original GPS fix; please check the correct house"},{status:400,headers:cors});
       const readings = Array.isArray(body.readings) ? body.readings.slice(-20) : [];
+      const nowMs=Date.now();
       const cleanReadings = readings.map((r:any)=>({lat:Number(r?.lat),lng:Number(r?.lng),acc:Number(r?.acc),ts:Number(r?.ts)}))
-        .filter((r:any)=>Number.isFinite(r.lat)&&r.lat>=-90&&r.lat<=90&&Number.isFinite(r.lng)&&r.lng>=-180&&r.lng<=180&&Number.isFinite(r.acc)&&r.acc>=0&&r.acc<=30&&Number.isFinite(r.ts)&&Math.abs(Date.now()-r.ts)<=5*60*1000);
-      if(cleanReadings.length<1) return Response.json({error:"At least one recent GPS reading is required"},{status:400,headers:cors});
+        .filter((r:any)=>Number.isFinite(r.lat)&&r.lat>=-90&&r.lat<=90&&Number.isFinite(r.lng)&&r.lng>=-180&&r.lng<=180&&Number.isFinite(r.acc)&&r.acc>=0&&r.acc<=30&&Number.isFinite(r.ts)&&r.ts<=nowMs+5*60*1000&&r.ts>=nowMs-gpsMaxAgeMs);
+      if(cleanReadings.length<1) return Response.json({error:"At least one valid GPS reading is required within the allowed capture window"},{status:400,headers:cors});
+      const capturedAtMs=Math.max(...cleanReadings.map((r:any)=>r.ts));
+      const capturedAt=new Date(capturedAtMs).toISOString();
+      if(user.role==="delivery"&&captureMode==="delivery_after_mark_delivered"&&(!bookingKey||bookingKey.length>120))
+        return Response.json({error:"A valid booking key is required for delivery GPS capture"},{status:400,headers:cors});
       const readMeanLat=cleanReadings.reduce((a:number,r:any)=>a+r.lat,0)/cleanReadings.length;
       const readMeanLng=cleanReadings.reduce((a:number,r:any)=>a+r.lng,0)/cleanReadings.length;
       const readSpread=Math.max(...cleanReadings.map((r:any)=>Math.hypot((r.lat-readMeanLat)*111320,(r.lng-readMeanLng)*111320*Math.cos(readMeanLat*Math.PI/180))));
@@ -1006,16 +1014,27 @@ Deno.serve(async (req) => {
       // Delivery users may capture GPS only for consumers in their own current office allocation.
       // The signed-in identity is taken from the validated session, never from request data.
       if (user.role === "delivery") {
-        const captureMode = String(body.capture_mode || "");
         if (!["delivery_initial_mapping", "delivery_after_mark_delivered", "delivery_manual_lookup"].includes(captureMode)) {
           return Response.json({ error: "Unsupported delivery GPS capture mode" }, { status: 400, headers: cors });
         }
         if (captureMode !== "delivery_manual_lookup") {
-          const { data: assignedBooking, error: assignmentError } = await db.from("lpg_pending")
-            .select("consumer_no").eq("consumer_no", consumerNo).eq("delivery_man", user.name).limit(1).maybeSingle();
+          const { data: assignedBookings, error: assignmentError } = await db.from("lpg_pending")
+            .select("id,order_no").eq("consumer_no", consumerNo).eq("delivery_man", user.name).limit(100);
           if (assignmentError) return Response.json({ error: "Could not verify this delivery assignment" }, { status: 503, headers: cors });
-          if (!assignedBooking) return Response.json({ error: "This consumer is not currently assigned to your delivery account" }, { status: 403, headers: cors });
+          if (!assignedBookings?.length) return Response.json({ error: "This consumer is not currently assigned to your delivery account" }, { status: 403, headers: cors });
+          if (captureMode === "delivery_after_mark_delivered" && !assignedBookings.some((row:any) =>
+            String(row.order_no || "") === bookingKey || String(row.id || "") === bookingKey
+          )) return Response.json({ error: "This booking is not currently assigned to your delivery account" }, { status: 403, headers: cors });
         }
+      }
+      // A retry after a lost network response must not create a second visit or
+      // increment the GPS evidence count again for the same completed booking.
+      if (user.role === "delivery" && captureMode === "delivery_after_mark_delivered") {
+        const { data: priorVisit, error: priorVisitError } = await db.from("lpg_gps_history")
+          .select("id,captured_at,status").eq("booking_key", bookingKey).eq("consumer_no", consumerNo).maybeSingle();
+        if (priorVisitError) return Response.json({ error: "Could not check prior delivery GPS sync" }, { status: 503, headers: cors });
+        if (priorVisit) return Response.json({ duplicate: true, status: priorVisit.status, captured_at: priorVisit.captured_at,
+          message: "This booking's GPS visit was already saved." }, { headers: cors });
       }
       const { data: existing, error: readError } = await db.from("lpg_gps")
         .select("lat,lng,acc,count,status,raw_lat,raw_lng,pin_lat,pin_lng").eq("consumer_no", consumerNo).maybeSingle();
@@ -1023,18 +1042,22 @@ Deno.serve(async (req) => {
       // Keep the office-approved master pin immutable, but still record the fresh
       // delivery visit fix so deviation checks compare this visit, not the old pin.
       if (existing?.status === "approved") {
-        const approvedCaptureMode = String(body.capture_mode || "delivery_after_mark_delivered").slice(0,40);
+        const approvedCaptureMode = captureMode;
         const approvedCaptureSource = approvedCaptureMode === "delivery_after_mark_delivered" ? "DELIVERY_BOY_DELIVERY" :
           approvedCaptureMode === "delivery_manual_lookup" ? "DELIVERY_BOY_MANUAL_LOOKUP" : "DELIVERY_BOY_INITIAL_MAPPING";
-        const approvedCapturedAt = new Date().toISOString();
-        const {error:approvedHistoryErr}=await db.from("lpg_gps_history").insert({
+        const approvedCapturedAt = capturedAt;
+        const approvedHistoryRow:any = {
+          booking_key:approvedCaptureMode==="delivery_after_mark_delivered"?bookingKey:null,
           consumer_no:consumerNo,raw_lat:rawLat,raw_lng:rawLng,pin_lat:lat,pin_lng:lng,acc,
           reading_count:cleanReadings.length,readings:cleanReadings,
           pin_offset_m:Number(Math.hypot((lat-rawLat)*111320,(lng-rawLng)*111320*Math.cos(rawLat*Math.PI/180)).toFixed(2)),
           source:approvedCaptureSource,capture_mode:approvedCaptureMode,captured_by:user.name,
           status:"delivery_observation",captured_at:approvedCapturedAt
-        });
-        if(approvedHistoryErr) return Response.json({error:"Approved customer pin was preserved, but this visit's GPS observation could not be saved: "+approvedHistoryErr.message},{status:503,headers:cors});
+        };
+        const approvedHistoryWrite=approvedHistoryRow.booking_key
+          ?await db.from("lpg_gps_history").upsert(approvedHistoryRow,{onConflict:"booking_key,consumer_no"})
+          :await db.from("lpg_gps_history").insert(approvedHistoryRow);
+        if(approvedHistoryWrite.error) return Response.json({error:"Approved customer pin was preserved, but this visit's GPS observation could not be saved: "+approvedHistoryWrite.error.message},{status:503,headers:cors});
         return Response.json({ignored:true,status:"approved",observation_saved:true,
           observation:{raw_lat:rawLat,raw_lng:rawLng,pin_lat:lat,pin_lng:lng,acc,captured_at:approvedCapturedAt},
           message:"Approved customer pin preserved. This delivery visit was recorded for location verification."},{headers:cors});
@@ -1054,9 +1077,7 @@ Deno.serve(async (req) => {
       const rawSavedLng = keepNew ? rawLng : (Number(existing?.raw_lng) || Number(existing?.lng) || rawLng);
       const pinSavedLat = keepNew ? lat : (Number(existing?.pin_lat) || Number(existing?.lat) || lat);
       const pinSavedLng = keepNew ? lng : (Number(existing?.pin_lng) || Number(existing?.lng) || lng);
-      const captureMode = String(body.capture_mode || "initial_mapping").slice(0, 40);
       const captureSource = captureMode === "delivery_after_mark_delivered" ? "DELIVERY_BOY_DELIVERY" : captureMode === "delivery_manual_lookup" ? "DELIVERY_BOY_MANUAL_LOOKUP" : "DELIVERY_BOY_INITIAL_MAPPING";
-      const capturedAt = new Date().toISOString();
       const row = {
         consumer_no: consumerNo, lat: newLat, lng: newLng, acc: bestAcc,
         raw_lat: rawSavedLat, raw_lng: rawSavedLng, pin_lat: pinSavedLat, pin_lng: pinSavedLng,
@@ -1066,8 +1087,14 @@ Deno.serve(async (req) => {
       };
       const { data, error } = await db.from("lpg_gps").upsert(row, { onConflict: "consumer_no" }).select().single();
       if (error) return Response.json({ error: error.message }, { status: 400, headers: cors });
-      const {error:historyErr}=await db.from("lpg_gps_history").insert({consumer_no:consumerNo,raw_lat:rawLat,raw_lng:rawLng,pin_lat:lat,pin_lng:lng,acc,reading_count:cleanReadings.length,readings:cleanReadings,pin_offset_m:Number(Math.hypot((lat-rawLat)*111320,(lng-rawLng)*111320*Math.cos(rawLat*Math.PI/180)).toFixed(2)),source:captureSource,capture_mode:captureMode,captured_by:user.name,status:"capturing",captured_at:capturedAt});
-      return Response.json({ data, history_saved:!historyErr, history_error:historyErr?.message||null }, { headers: cors });
+      const historyRow:any={booking_key:user.role==="delivery"&&captureMode==="delivery_after_mark_delivered"?bookingKey:null,
+        consumer_no:consumerNo,raw_lat:rawLat,raw_lng:rawLng,pin_lat:lat,pin_lng:lng,acc,reading_count:cleanReadings.length,readings:cleanReadings,
+        pin_offset_m:Number(Math.hypot((lat-rawLat)*111320,(lng-rawLng)*111320*Math.cos(rawLat*Math.PI/180)).toFixed(2)),
+        source:captureSource,capture_mode:captureMode,captured_by:user.name,status:"capturing",captured_at:capturedAt};
+      const historyWrite=historyRow.booking_key
+        ?await db.from("lpg_gps_history").upsert(historyRow,{onConflict:"booking_key,consumer_no"})
+        :await db.from("lpg_gps_history").insert(historyRow);
+      return Response.json({ data, history_saved:!historyWrite.error, history_error:historyWrite.error?.message||null }, { headers: cors });
     }
 
     // Office review queue for delivery-location deviations and temporary-pin outliers.
