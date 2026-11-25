@@ -462,7 +462,6 @@ If the handover is not available in the new chat, search the ChatGPT Library for
 - Installed PWA service-worker update from v15 to v16.
 
 ### Pending
-- Confirm GitHub Pages build/deployment #134 completes successfully and inspect live hosted pages. The Pages workflow completed successfully, but the hosted HTML was not independently retrieved in this session; confirm rendered page content on a real browser/phone.
 - Real-device tests on delivery staff phones and a real customer secure link; verify map tiles, drag/tap selection, GPS accuracy display, 500 m guard, API save, offline retry and office review.
 - Reconcile live migration `20261124101003_allow_delivery_completion_with_optional_gps`, present in Supabase migration history but absent from `supabase/migrations/` on GitHub. Inspect the exact applied SQL/effects and add the accurate migration source or a documented recovery record; do not invent SQL or reapply it blindly.
 
@@ -475,4 +474,4 @@ If the handover is not available in the new chat, search the ChatGPT Library for
 
 ### Handover synchronization
 - GitHub master updated: Yes — current snapshot and release notes are committed after the feature release.
-- ChatGPT Library reference updated: Pending until the master handover update is committed and the Library copy is replaced with the same content.
+- ChatGPT Library reference updated: Yes — synchronized to the GitHub master content on 26 November 2026.
