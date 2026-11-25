@@ -414,7 +414,7 @@ If the handover is not available in the new chat, search the ChatGPT Library for
 - **Live database counts:** 10,988 masters; 8,284 delivered rows; 254 pending rows; 0 GPS rows; 0 GPS history rows; 0 active GPS link rows; 0 published routes; 0 route stops.
 - **Verified:** GitHub Actions static validation passed on the merged feature release; production project health, Edge Function versions, database counts, and deployed-vs-GitHub `lpg-api` source match checked.
 - **Implemented but not tested:** real Android map interaction, tile rendering on delivery/customer phones, GPS submission with adjusted pins, installed PWA cache update, and office GPS review.
-- **Pending:** verify GitHub Pages deployment and live page contents; perform real-device and end-to-end acceptance; reconcile the live-only migration `20261124101003_allow_delivery_completion_with_optional_gps` with a checked-in migration source.
+- **Pending:** inspect live GitHub Pages content and map rendering in a real browser/phone; perform real-device/end-to-end acceptance; reconcile the live-only migration `20261124101003_allow_delivery_completion_with_optional_gps` with a checked-in migration source.
 - **Known issue:** `consumer-location/index.html` is an older duplicate capture page with stricter 5 m/five-reading logic; it is not the official link entry documented in this handover. Do not route customer links to it.
 - **Copy policy:** GitHub `PROJECT_HANDOVER.md` remains master; update ChatGPT Library `SAMRUDDHI_LPG_PROJECT_HANDOVER.md` from the same final content after every meaningful change.
 
@@ -447,7 +447,8 @@ If the handover is not available in the new chat, search the ChatGPT Library for
   - `supabase/functions/lpg-api/index.ts` — GitHub source reconciled to the active deployed `lpg-api` v46 source (source-only; no deployment).
 - GitHub PR: https://github.com/samruddhigas/locate/pull/2 (merged).
 - GitHub feature release commit: `ab7a842a147844942ff3557fc5f71826eedd75ad`.
-- Static validation: GitHub Actions run #134? The source validation workflow run is https://github.com/samruddhigas/locate/actions/runs/45690677142 and completed successfully on the merged main commit. It checked Dashboard, GPS page, and DeliveryApp mirror/static structure.
+- Static validation: GitHub Actions run https://github.com/samruddhigas/locate/actions/runs/45690677142 completed successfully on the merged main commit. It checked Dashboard, GPS page, and DeliveryApp mirror/static structure.
+- GitHub Pages deployment: workflow #134 https://github.com/samruddhigas/locate/actions/runs/45690675530 completed successfully. Direct page retrieval was not available through the current inspection channel, so rendered live-page verification remains pending.
 - Supabase: project `uggqsvgxjhvdfkddqzyh` ACTIVE_HEALTHY; `lpg-api` v46 ACTIVE; `deliveryapp` v3 ACTIVE. No schema, data, or Edge Function deployment changes were made.
 - Database counts after source release: `lpg_masters` 10,988; `lpg_delivered` 8,284; `lpg_pending` 254; `lpg_gps`, `lpg_gps_history`, `lpg_gps_links`, `lpg_delivery_routes`, and `lpg_delivery_route_stops` each 0.
 - Deployed `lpg-api` v46 and GitHub `supabase/functions/lpg-api/index.ts` now match exactly after reconciling the GPS capture validation block from five readings/5 m to one fresh reading/up to 30 m. No function redeployment was performed.
@@ -461,7 +462,7 @@ If the handover is not available in the new chat, search the ChatGPT Library for
 - Installed PWA service-worker update from v15 to v16.
 
 ### Pending
-- Confirm GitHub Pages build/deployment #134 completes successfully and inspect live hosted pages. At the time of this handover update, the Pages workflow was still running; do not claim live publication until it succeeds.
+- Confirm GitHub Pages build/deployment #134 completes successfully and inspect live hosted pages. The Pages workflow completed successfully, but the hosted HTML was not independently retrieved in this session; confirm rendered page content on a real browser/phone.
 - Real-device tests on delivery staff phones and a real customer secure link; verify map tiles, drag/tap selection, GPS accuracy display, 500 m guard, API save, offline retry and office review.
 - Reconcile live migration `20261124101003_allow_delivery_completion_with_optional_gps`, present in Supabase migration history but absent from `supabase/migrations/` on GitHub. Inspect the exact applied SQL/effects and add the accurate migration source or a documented recovery record; do not invent SQL or reapply it blindly.
 
@@ -473,5 +474,5 @@ If the handover is not available in the new chat, search the ChatGPT Library for
 - No real phone test has yet established sub-7 m accuracy. Never promise a fixed accuracy.
 
 ### Handover synchronization
-- GitHub master updated: Yes — this section and current snapshot are committed after the feature release.
+- GitHub master updated: Yes — current snapshot and release notes are committed after the feature release.
 - ChatGPT Library reference updated: Pending until the master handover update is committed and the Library copy is replaced with the same content.
