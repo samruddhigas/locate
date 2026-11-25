@@ -42,7 +42,7 @@ The system is intended to make daily office and delivery work easier without req
 ### GitHub source of truth
 - Repository: https://github.com/samruddhigas/locate
 - Default branch: `main`
-- Latest feature release commit: `ab7a842a147844942ff3557fc5f71826eedd75ad` (the handover synchronization commit follows this release in Git history).
+- Latest feature release commits: `ab7a842a147844942ff3557fc5f71826eedd75ad` (GPS map upgrade) and `2dbaa177963a7f29ccc7e2489f497aa6255aa0da` (canonical customer-link routing); the handover synchronization commit follows.
 - Latest commit page: https://github.com/samruddhigas/locate/commit/aa2acc73e6c9fe83f90c3ceffccc8da86795816c
 
 ### Supabase production project
@@ -403,19 +403,19 @@ If the handover is not available in the new chat, search the ChatGPT Library for
 **Current checked state: 26 November 2026**
 - **Project:** Samruddhi Gas Agency LPG Distribution System.
 - **GitHub master repository:** `samruddhigas/locate`, branch `main`.
-- **Feature release commit:** `ab7a842a147844942ff3557fc5f71826eedd75ad`; the handover synchronization commit follows.
+- **Feature release commits:** `ab7a842a147844942ff3557fc5f71826eedd75ad` (map upgrade) and `2dbaa177963a7f29ccc7e2489f497aa6255aa0da` (customer-link routing); the handover synchronization commit follows.
 - **Production Supabase:** `uggqsvgxjhvdfkddqzyh`, status `ACTIVE_HEALTHY`.
 - **Edge Functions:** `lpg-api` v46 ACTIVE; `deliveryapp` v3 ACTIVE.
 - **Dashboard source:** build label v36; latest delivery GPS map wiring is in the 26 November feature release.
 - **DeliveryApp cache:** `samruddhi-delivery-v16`.
-- **Consumer location page:** root `index.html` is the official link entry; it now has road/satellite switching in addition to existing draggable/tap-to-place entrance pin.
+- **Consumer location page:** root `index.html` is the canonical capture page with road/satellite switching, draggable pin and tap-to-place. Dashboard generates new links to this root page; legacy `/consumer-location/` links redirect to root while preserving token query/hash.
 - **DeliveryApp:** standalone PWA and Dashboard-generated app now present a map confirmation step for GPS capture, with draggable/tap-to-place pin, road/satellite layers, 500 m guard, and separate raw GPS / selected entrance coordinates.
 - **lpg-api source:** GitHub `supabase/functions/lpg-api/index.ts` has been reconciled to the active deployed v46 source. No Edge Function redeployment was performed.
 - **Live database counts:** 10,988 masters; 8,284 delivered rows; 254 pending rows; 0 GPS rows; 0 GPS history rows; 0 active GPS link rows; 0 published routes; 0 route stops.
 - **Verified:** GitHub Actions static validation passed on the merged feature release; production project health, Edge Function versions, database counts, and deployed-vs-GitHub `lpg-api` source match checked.
 - **Implemented but not tested:** real Android map interaction, tile rendering on delivery/customer phones, GPS submission with adjusted pins, installed PWA cache update, and office GPS review.
 - **Pending:** inspect live GitHub Pages content and map rendering in a real browser/phone; perform real-device/end-to-end acceptance; reconcile the live-only migration `20261124101003_allow_delivery_completion_with_optional_gps` with a checked-in migration source.
-- **Known issue:** `consumer-location/index.html` is an older duplicate capture page with stricter 5 m/five-reading logic; it is not the official link entry documented in this handover. Do not route customer links to it.
+- **Legacy route:** `consumer-location/index.html` is now a compatibility redirect to the canonical root page; existing secure links retain their query parameters.
 - **Copy policy:** GitHub `PROJECT_HANDOVER.md` remains master; update ChatGPT Library `SAMRUDDHI_LPG_PROJECT_HANDOVER.md` from the same final content after every meaningful change.
 
 ---
@@ -466,7 +466,7 @@ If the handover is not available in the new chat, search the ChatGPT Library for
 - Reconcile live migration `20261124101003_allow_delivery_completion_with_optional_gps`, present in Supabase migration history but absent from `supabase/migrations/` on GitHub. Inspect the exact applied SQL/effects and add the accurate migration source or a documented recovery record; do not invent SQL or reapply it blindly.
 
 ### Known issues / safeguards
-- The older duplicate `consumer-location/index.html` still contains the older five-readings/5 m capture logic. The official consumer link entry is root `index.html`; do not redirect links to the duplicate until it is reconciled or retired safely.
+- `consumer-location/index.html` is now a compatibility redirect to root `index.html`; verify an already-issued secure WhatsApp link on a real phone to confirm query/token preservation end-to-end.
 - Supabase security advisor reports 17 RLS-enabled tables without policies (INFO). Existing custom Edge Function/service-role access is the current architecture; do not add broad policies or grants without a full access-path audit.
 - Supabase performance advisor reports 12 unused indexes (INFO). Do not drop them without workload evidence.
 - Live GPS and GPS-link tables are empty, so office GPS review and route use cannot yet be validated with production captures.
@@ -475,3 +475,32 @@ If the handover is not available in the new chat, search the ChatGPT Library for
 ### Handover synchronization
 - GitHub master updated: Yes — current snapshot and release notes are committed after the feature release.
 - ChatGPT Library reference updated: Yes — synchronized to the GitHub master content on 26 November 2026.
+
+
+## 17. 26 November 2026 — Canonical customer location link routing
+
+### Completed and verified
+- Dashboard `consumerCapturePageUrl()` now returns the canonical root customer location URL. New secure WhatsApp GPS links are generated directly to `https://samruddhigas.github.io/locate/`.
+- Existing links already sent to `/consumer-location/?t=...&k=...` remain compatible: `consumer-location/index.html` redirects to the root page while preserving `location.search` and `location.hash`.
+- The old duplicate five-readings/5 m capture page is no longer served to customers through the legacy route; the root canonical page's best-fix flow (up to 30 m), draggable/tap-to-place map, 500 m pin guard and road/satellite layers are now used for both old and new links.
+- Static validation now asserts the redirect preserves query/hash, Dashboard generates root links, and the canonical customer page contains satellite controls.
+- GitHub PR: https://github.com/samruddhigas/locate/pull/3 (merged).
+- GitHub release commit: `2dbaa177963a7f29ccc7e2489f497aa6255aa0da`.
+- Pull-request static validation passed: https://github.com/samruddhigas/locate/actions/runs/45691462557.
+- No Supabase schema, data, or Edge Function changes.
+
+### Implemented but not tested
+- Existing WhatsApp secure links opening the legacy redirect on a real Android phone and arriving at the root form with the original token and public key.
+- New WhatsApp link generation from the live Dashboard and customer submission through the canonical root page.
+
+### Pending
+- Confirm GitHub Pages deployment workflow #138 completes successfully and verify the live root and legacy redirect pages in a real browser/phone.
+- End-to-end test one existing secure link and one newly generated secure link; verify one-time token use, accurate GPS, pin movement, successful save and office review.
+
+### Known issues / safeguards
+- Direct live-page retrieval was unavailable through the current inspection channel. GitHub Pages build/deployment status must be checked separately from source-level validation.
+- The live migration `20261124101003_allow_delivery_completion_with_optional_gps` remains absent from the GitHub migration directory; reconcile exact applied SQL before making migration changes.
+
+### Handover synchronization
+- GitHub master updated: Yes — canonical customer routing release documented.
+- ChatGPT Library reference updated: Pending synchronization after the GitHub master handover update is committed.
