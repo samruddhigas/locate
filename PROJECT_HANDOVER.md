@@ -1,6 +1,6 @@
 # SAMRUDDHI LPG PROJECT HANDOVER
 **Living technical and operational record**  
-**Last reviewed:** 24 November 2026  
+**Last reviewed:** 26 November 2026  
 **Project owner:** Samruddhi Gas Agency, Katol, Maharashtra  
 **Repository:** https://github.com/samruddhigas/locate  
 **Default branch:** `main`
@@ -42,7 +42,7 @@ The system is intended to make daily office and delivery work easier without req
 ### GitHub source of truth
 - Repository: https://github.com/samruddhigas/locate
 - Default branch: `main`
-- Current latest commit at this handover: `aa2acc73e6c9fe83f90c3ceffccc8da86795816c`
+- Latest feature release commit: `ab7a842a147844942ff3557fc5f71826eedd75ad` (the handover synchronization commit follows this release in Git history).
 - Latest commit page: https://github.com/samruddhigas/locate/commit/aa2acc73e6c9fe83f90c3ceffccc8da86795816c
 
 ### Supabase production project
@@ -147,16 +147,16 @@ Cache update commit:
 
 ## 5. Latest versions and deployment record
 
-**Snapshot checked on 24 November 2026**
+**Snapshot checked on 26 November 2026**
 
 | Area | Latest known version/state | Evidence | Verification status |
 |---|---|---|---|
-| GitHub `main` | `aa2acc73e6c9fe83f90c3ceffccc8da86795816c` | GitHub latest commit listing | Confirmed in repository |
+| GitHub `main` | `ab7a842a147844942ff3557fc5f71826eedd75ad` (feature release) | GitHub merge commit | Confirmed in repository; handover update follows |
 | Dashboard source | Build label v36 | `dashboard/index.html` header/title | Source metadata confirmed; full live workflow not tested |
 | `lpg-api` | v46 ACTIVE | Supabase Edge Function listing | Deployment status confirmed |
 | `deliveryapp` Edge Function | v3 ACTIVE | Supabase Edge Function listing | Deployment status confirmed |
 | Consumer GPS source | Commit `4038580` | GitHub commit and source inspection | Code change confirmed; real customer phone test pending |
-| DeliveryApp cache | `samruddhi-delivery-v15` | `deliveryapp/sw.js` | Source confirmed; installed-phone cache refresh not tested |
+| DeliveryApp cache | `samruddhi-delivery-v16` | `deliveryapp/sw.js` | Source confirmed; installed-phone cache refresh not tested |
 | DeliveryApp standalone source | `deliveryapp/index.html` + `app.js` | GitHub source inspection | Source exists; full field test pending |
 | GitHub Pages | Three intended URLs listed above | Configuration/source context | Live publication not independently verified |
 
@@ -180,7 +180,7 @@ The following are verified at the source/deployment-inspection level as of this 
 - [x] Consumer capture source contains best-fix GPS flow and a 30 m fallback.
 - [x] Consumer capture source no longer enforces the previous five-reading / five-metre spread requirement.
 - [x] Consumer capture backend source was changed to accept a fresh valid reading up to 30 m, while preserving one-time link and approval safeguards.
-- [x] DeliveryApp service worker cache name is `samruddhi-delivery-v15`.
+- [x] DeliveryApp service worker cache name is `samruddhi-delivery-v16`.
 - [x] Standalone DeliveryApp source includes a GPS-only consumer search section.
 - [x] Dashboard source identifies build v36 and API v46.
 - [x] Recent source changes have GitHub commits recorded above.
@@ -400,18 +400,23 @@ If the handover is not available in the new chat, search the ChatGPT Library for
 
 ## 14. Current handover baseline — concise snapshot
 
+**Current checked state: 26 November 2026**
 - **Project:** Samruddhi Gas Agency LPG Distribution System.
 - **GitHub master repository:** `samruddhigas/locate`, branch `main`.
-- **Latest known GitHub commit:** `aa2acc73e6c9fe83f90c3ceffccc8da86795816c`.
+- **Feature release commit:** `ab7a842a147844942ff3557fc5f71826eedd75ad`; the handover synchronization commit follows.
 - **Production Supabase:** `uggqsvgxjhvdfkddqzyh`, status `ACTIVE_HEALTHY`.
 - **Edge Functions:** `lpg-api` v46 ACTIVE; `deliveryapp` v3 ACTIVE.
-- **Dashboard source label:** v36.
-- **DeliveryApp service-worker cache:** v15.
-- **Most recent work:** consumer GPS best-fix/fallback adjustment, backend acceptance up to 30 m, DeliveryApp cache refresh, Dashboard metadata update.
-- **Verified:** source and deployment metadata checks listed in Section 6.
-- **Not yet proven:** real-world GPS accuracy, complete office/delivery workflows, and live GitHub Pages behavior.
-- **Next priority:** end-to-end testing on real Android devices and office browser, then close P0 items.
-- **Copy policy:** GitHub `PROJECT_HANDOVER.md` + ChatGPT Library `SAMRUDDHI_LPG_PROJECT_HANDOVER.md` must be updated together after every meaningful change.
+- **Dashboard source:** build label v36; latest delivery GPS map wiring is in the 26 November feature release.
+- **DeliveryApp cache:** `samruddhi-delivery-v16`.
+- **Consumer location page:** root `index.html` is the official link entry; it now has road/satellite switching in addition to existing draggable/tap-to-place entrance pin.
+- **DeliveryApp:** standalone PWA and Dashboard-generated app now present a map confirmation step for GPS capture, with draggable/tap-to-place pin, road/satellite layers, 500 m guard, and separate raw GPS / selected entrance coordinates.
+- **lpg-api source:** GitHub `supabase/functions/lpg-api/index.ts` has been reconciled to the active deployed v46 source. No Edge Function redeployment was performed.
+- **Live database counts:** 10,988 masters; 8,284 delivered rows; 254 pending rows; 0 GPS rows; 0 GPS history rows; 0 active GPS link rows; 0 published routes; 0 route stops.
+- **Verified:** GitHub Actions static validation passed on the merged feature release; production project health, Edge Function versions, database counts, and deployed-vs-GitHub `lpg-api` source match checked.
+- **Implemented but not tested:** real Android map interaction, tile rendering on delivery/customer phones, GPS submission with adjusted pins, installed PWA cache update, and office GPS review.
+- **Pending:** verify GitHub Pages deployment and live page contents; perform real-device and end-to-end acceptance; reconcile the live-only migration `20261124101003_allow_delivery_completion_with_optional_gps` with a checked-in migration source.
+- **Known issue:** `consumer-location/index.html` is an older duplicate capture page with stricter 5 m/five-reading logic; it is not the official link entry documented in this handover. Do not route customer links to it.
+- **Copy policy:** GitHub `PROJECT_HANDOVER.md` remains master; update ChatGPT Library `SAMRUDDHI_LPG_PROJECT_HANDOVER.md` from the same final content after every meaningful change.
 
 ---
 
@@ -427,3 +432,46 @@ If the handover is not available in the new chat, search the ChatGPT Library for
 - GitHub master updated: Yes — initial master committed as `a5a4c2b4c07efde197c889af4e0e8918939c952d`.
 - ChatGPT Library reference updated: Yes — uploaded to `/Projects/Samruddhi LPG/SAMRUDDHI_LPG_PROJECT_HANDOVER.md`.
 - Synchronization: both copies were updated from the same final content on 24 November 2026. The GitHub synchronization commit is recorded in the repository history; the ChatGPT Library reference was overwritten successfully.
+
+## 16. 26 November 2026 — GPS entrance map upgrade and live-source reconciliation
+
+### Completed and verified
+- Components: standalone DeliveryApp, Dashboard-generated DeliveryApp, official customer LocationCapture, Supabase source mirror.
+- Source files changed:
+  - `deliveryapp/index.html` — Leaflet assets and dedicated pin-picker dialog.
+  - `deliveryapp/app.js` — GPS captures require entrance-pin confirmation; raw GPS and selected pin remain separate; pin picker supports drag and tap.
+  - `deliveryapp/app.css` — responsive map dialog and controls.
+  - `deliveryapp/sw.js` — cache bumped to `samruddhi-delivery-v16`.
+  - `index.html` — official customer location page gains road/satellite layer controls; existing draggable marker, tap-to-place, 30 m fallback and 500 m pin-offset limit retained.
+  - `dashboard/index.html` — wired the previously unused entrance-pin overlay into generated delivery-app GPS capture; added tap-to-place, cancel and 500 m guard; retained offline GPS queue.
+  - `supabase/functions/lpg-api/index.ts` — GitHub source reconciled to the active deployed `lpg-api` v46 source (source-only; no deployment).
+- GitHub PR: https://github.com/samruddhigas/locate/pull/2 (merged).
+- GitHub feature release commit: `ab7a842a147844942ff3557fc5f71826eedd75ad`.
+- Static validation: GitHub Actions run #134? The source validation workflow run is https://github.com/samruddhigas/locate/actions/runs/45690677142 and completed successfully on the merged main commit. It checked Dashboard, GPS page, and DeliveryApp mirror/static structure.
+- Supabase: project `uggqsvgxjhvdfkddqzyh` ACTIVE_HEALTHY; `lpg-api` v46 ACTIVE; `deliveryapp` v3 ACTIVE. No schema, data, or Edge Function deployment changes were made.
+- Database counts after source release: `lpg_masters` 10,988; `lpg_delivered` 8,284; `lpg_pending` 254; `lpg_gps`, `lpg_gps_history`, `lpg_gps_links`, `lpg_delivery_routes`, and `lpg_delivery_route_stops` each 0.
+- Deployed `lpg-api` v46 and GitHub `supabase/functions/lpg-api/index.ts` now match exactly after reconciling the GPS capture validation block from five readings/5 m to one fresh reading/up to 30 m. No function redeployment was performed.
+- Status category: source changes merged and static validation passed; real device and live end-to-end acceptance remains pending.
+
+### Implemented but not tested
+- Android delivery staff GPS capture with draggable pin and tap-to-place.
+- Customer WhatsApp secure link with road/satellite switching and entrance-pin confirmation.
+- Dashboard-generated delivery app map flow and offline queue behavior after pin adjustment.
+- Esri satellite and CARTO/OSM road tile loading on real phones.
+- Installed PWA service-worker update from v15 to v16.
+
+### Pending
+- Confirm GitHub Pages build/deployment #134 completes successfully and inspect live hosted pages. At the time of this handover update, the Pages workflow was still running; do not claim live publication until it succeeds.
+- Real-device tests on delivery staff phones and a real customer secure link; verify map tiles, drag/tap selection, GPS accuracy display, 500 m guard, API save, offline retry and office review.
+- Reconcile live migration `20261124101003_allow_delivery_completion_with_optional_gps`, present in Supabase migration history but absent from `supabase/migrations/` on GitHub. Inspect the exact applied SQL/effects and add the accurate migration source or a documented recovery record; do not invent SQL or reapply it blindly.
+
+### Known issues / safeguards
+- The older duplicate `consumer-location/index.html` still contains the older five-readings/5 m capture logic. The official consumer link entry is root `index.html`; do not redirect links to the duplicate until it is reconciled or retired safely.
+- Supabase security advisor reports 17 RLS-enabled tables without policies (INFO). Existing custom Edge Function/service-role access is the current architecture; do not add broad policies or grants without a full access-path audit.
+- Supabase performance advisor reports 12 unused indexes (INFO). Do not drop them without workload evidence.
+- Live GPS and GPS-link tables are empty, so office GPS review and route use cannot yet be validated with production captures.
+- No real phone test has yet established sub-7 m accuracy. Never promise a fixed accuracy.
+
+### Handover synchronization
+- GitHub master updated: Yes — this section and current snapshot are committed after the feature release.
+- ChatGPT Library reference updated: Pending until the master handover update is committed and the Library copy is replaced with the same content.
