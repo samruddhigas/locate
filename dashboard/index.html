@@ -6427,7 +6427,7 @@ async function captureDeliveryGPS(d, captureMode='delivery_after_mark_delivered'
   if (!navigator.geolocation || !d?.consumerNo) { toast('⚠️ Location permission or GPS unavailable','#b45309'); return false; }
   toast('📍 Finding best GPS fix…','#2563eb');
   try {
-    const warmFix=(_gps&&Number.isFinite(Number(_gps.lat))&&Number.isFinite(Number(_gps.lng))&&Number(_gps.acc)>0&&Number(_gps.acc)<=30&&Date.now()-Number(_gps.ts||0)<=10000)
+    const warmFix=(_gps&&Number.isFinite(Number(_gps.lat))&&Number.isFinite(Number(_gps.lng))&&Number(_gps.acc)>0&&Number(_gps.acc)<=10&&Date.now()-Number(_gps.ts||0)<=10000)
       ?{lat:Number(_gps.lat),lng:Number(_gps.lng),acc:Number(_gps.acc),ts:Number(_gps.ts)}:null;
     const best = warmFix||await new Promise((resolve,reject)=>{
       let watch=null,timer=null,bestFix=null,finished=false;
