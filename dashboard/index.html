@@ -2137,6 +2137,11 @@ body.delivery-restricted .logged-in-bar #loggedInRole { display:none !important;
                   <input id="gpsClearSearch" style="flex:1;min-width:160px;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;outline:none" placeholder="Search consumer name or number…" oninput="searchGpsConsumers()">
                 </div>
                 <div id="gpsClearResults" style="margin-top:8px;max-height:180px;overflow-y:auto"></div>
+                <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                  <button class="btn" onclick="loadDeliveryLocationExceptions()">⚠️ View delivery location exceptions</button>
+                  <span style="font-size:11px;color:var(--text2)">Deviations and outliers are recorded here for office review.</span>
+                </div>
+                <div id="deliveryLocationExceptions" style="margin-top:10px;max-height:320px;overflow:auto"></div>
               </div>
 
               <!-- Remarks -->
@@ -6279,6 +6284,27 @@ function compactCard(d, isDone) {
 function toggleExpand(id) {
   _expandedId = _expandedId === id ? null : id;
   renderList();
+}
+
+async function loadDeliveryLocationExceptions(){
+  const box=document.getElementById('deliveryLocationExceptions');if(!box)return;
+  box.textContent='Loading open location exceptions…';
+  try{
+    const result=await newProjectApiPost({action:'delivery_location_exceptions',op:'list',status:'open'},tokenProvider());
+    const rows=Array.isArray(result.data)?result.data:[];
+    if(!rows.length){box.innerHTML='<div style="padding:10px;color:var(--green)">No open delivery-location exceptions.</div>';return;}
+    const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    box.innerHTML=rows.map(x=>'<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;background:var(--surface)"><b>'+esc(x.consumer_no)+' · '+esc(x.severity).toUpperCase()+'</b><div style="font-size:12px;color:var(--text2);margin:4px 0">'+esc(x.delivery_man)+' · '+Math.round(Number(x.distance_m)||0)+' m · '+esc(new Date(x.created_at).toLocaleString('en-IN'))+'</div><div style="font-size:12px">'+esc(x.reason)+'</div><button class="btn" style="margin-top:8px" onclick="reviewDeliveryLocationException(\''+esc(x.id)+'\')">Review / resolve</button></div>').join('');
+  }catch(e){box.textContent='Could not load exceptions: '+(e.message||e);}
+}
+async function reviewDeliveryLocationException(id){
+  const reason=prompt('Enter the office review note (for example: customer shifted entrance, GPS drift checked, or corrected pin required):');
+  if(reason===null)return;
+  if(reason.trim().length<3){alert('Please enter a short review note.');return;}
+  try{
+    await newProjectApiPost({action:'delivery_location_exceptions',op:'resolve',id,reason:reason.trim()},tokenProvider());
+    await loadDeliveryLocationExceptions();
+  }catch(e){alert('Could not update exception: '+(e.message||e));}
 }
 
 // ================================================================
