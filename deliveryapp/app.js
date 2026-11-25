@@ -176,7 +176,9 @@ async function captureGps(r,button,captureMode='delivery_initial_mapping',option
  try{
   // Continuously request fresh GNSS/high-accuracy fixes. Never average coordinates:
   // while the delivery person is moving, averaging would place the customer between locations.
-  const best=await new Promise((resolve,reject)=>{
+  const warmFix=(typeof _gps!=='undefined'&&_gps&&Number.isFinite(Number(_gps.lat))&&Number.isFinite(Number(_gps.lng))&&Number(_gps.acc)>0&&Number(_gps.acc)<=30&&Date.now()-Number(_gps.ts||0)<=10000)
+   ?{lat:Number(_gps.lat),lng:Number(_gps.lng),acc:Number(_gps.acc),ts:Number(_gps.ts)}:null;
+  const best=warmFix||await new Promise((resolve,reject)=>{
    let watchId=null,deadline=null,bestFix=null,finished=false;
    const finish=(err)=>{
     if(finished)return;finished=true;
@@ -190,15 +192,15 @@ async function captureGps(r,button,captureMode='delivery_initial_mapping',option
      const c=pos.coords,acc=Number(c.accuracy);
      if(!Number.isFinite(acc)||acc<=0||acc>1000)return;
      const fix={lat:Number(c.latitude),lng:Number(c.longitude),acc,ts:Number(pos.timestamp)||Date.now()};
-     if(!Number.isFinite(fix.lat)||!Number.isFinite(fix.lng)||Date.now()-fix.ts>20000)return;
+     if(!Number.isFinite(fix.lat)||!Number.isFinite(fix.lng)||Date.now()-fix.ts>10000)return;
      if(!bestFix||fix.acc<bestFix.acc)bestFix=fix;
      button.textContent='Best GPS '+Math.round(bestFix.acc)+' m…';
      if(status)status.textContent='Improving GPS fix · best so far '+Math.round(bestFix.acc)+' m';
      // Stop as soon as the phone supplies a genuinely good fix.
-     if(bestFix.acc<=30)finish();
+     if(bestFix.acc<=10)finish();
     },err=>{
      if(err.code===1)finish(new Error('Location permission denied. Allow precise location for this app.'));else if(status)status.textContent='Waiting for GPS signal…';
-    },{enableHighAccuracy:true,timeout:8000,maximumAge:15000});
+    },{enableHighAccuracy:true,timeout:8000,maximumAge:5000});
    }catch(e){finish(e)}
   });
   if(!best||best.acc>30)throw new Error('Best GPS accuracy was '+Math.round(best?.acc||0)+' m. Need 30 m or better. Keep Location enabled and retry in a more open place.');
