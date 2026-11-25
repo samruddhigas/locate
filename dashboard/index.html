@@ -6297,6 +6297,7 @@ async function loadDeliveryLocationExceptions(){
     if(!rows.length){box.innerHTML='<div style="padding:10px;color:var(--green)">No open delivery-location exceptions.</div>';return;}
     const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     box.innerHTML=rows.map(x=>'<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;background:var(--surface)"><b>'+esc(x.consumer_no)+' · '+esc(x.severity).toUpperCase()+'</b><div style="font-size:12px;color:var(--text2);margin:4px 0">'+esc(x.delivery_man)+' · '+Math.round(Number(x.distance_m)||0)+' m · '+esc(new Date(x.created_at).toLocaleString('en-IN'))+'</div><div style="font-size:12px">'+esc(x.reason)+'</div><button class="btn" style="margin-top:8px" data-location-exception="'+esc(x.id)+'">Review / resolve</button></div>').join('');
+    box.querySelectorAll('[data-location-exception]').forEach(btn=>btn.addEventListener('click',()=>reviewDeliveryLocationException(btn.dataset.locationException)));
   }catch(e){box.textContent='Could not load exceptions: '+(e.message||e);}
 }
 async function reviewDeliveryLocationException(id){
@@ -6439,10 +6440,25 @@ async function captureDeliveryGPS(d, captureMode='delivery_after_mark_delivered'
       catch(e){finish(e);}
     });
     if(!best||best.acc>30)throw new Error('Best GPS accuracy was '+Math.round(best?.acc||0)+' m. Need 30 m or better.');
-    if(!window.L)throw new Error('Map could not load. GPS was not submitted; reconnect and retry.');
-    _deliveryGpsCurrent=d;_deliveryGpsBest=best;_deliveryGpsSamples=[best];_deliveryGpsCaptureMode=captureMode;
-    const saved=await new Promise(resolve=>{_deliveryGpsPinResolve=resolve;showDeliveryGpsPin(d,best);});
-    return saved===true;
+    // Mark Done uses the fresh GPS fix immediately; do not stop the delivery flow
+    // for a map confirmation. The interactive entrance map remains for manual mapping.
+    const payload={booking_key:String(d.orderNo||d.id||''),consumer_no:String(d.consumerNo),
+      raw_lat:best.lat,raw_lng:best.lng,pin_lat:best.lat,pin_lng:best.lng,
+      lat:best.lat,lng:best.lng,acc:best.acc,
+      readings:[{lat:best.lat,lng:best.lng,acc:best.acc,ts:best.ts}],capture_mode:captureMode};
+    try{
+      await newProjectApiPost({action:'gps_capture',...payload},DELIVERY_SESSION_TOKEN);
+      d.lat=best.lat;d.lng=best.lng;d.gpsAt=new Date().toISOString();d.gpsAccuracy=best.acc;save();updateStats();
+      toast('📍 Delivery GPS captured · ±'+Math.round(best.acc)+' m');return true;
+    }catch(saveError){
+      if(!navigator.onLine||/failed to fetch|networkerror|load failed/i.test(saveError.message||'')){
+        APP.pendingGps=Array.isArray(APP.pendingGps)?APP.pendingGps:[];
+        if(!APP.pendingGps.some(x=>String(x.booking_key||'')===payload.booking_key&&String(x.consumer_no)===payload.consumer_no))APP.pendingGps.push(payload);
+        d.lat=best.lat;d.lng=best.lng;d.gpsAt='queued';d.gpsAccuracy=best.acc;save();
+        toast('📍 Delivery GPS queued · ±'+Math.round(best.acc)+' m','#b45309');return false;
+      }
+      throw saveError;
+    }
   } catch(e) { toast('⚠️ GPS not captured · '+(e.message||'try again'),'#b45309'); return false; }
 }
 function showDeliveryGpsPin(d,best){
