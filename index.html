@@ -269,6 +269,7 @@
     margin-bottom: 16px;
     line-height: 1.5;
   }
+.secondary-map-btn{flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:#f5f5f4;color:#292524;font-weight:700;font-size:12px;cursor:pointer}
 </style>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
@@ -320,6 +321,10 @@
   <div id="pinMapPanel" style="display:none;margin:0 0 20px">
     <div style="font-size:14px;font-weight:700;margin-bottom:6px">Confirm your home's main entrance</div>
     <div style="font-size:12px;color:var(--text2);margin-bottom:10px;line-height:1.5">The marker starts at your GPS position. Drag it onto your main entrance or tap the map. Keep it within 500 metres of your GPS position.</div>
+    <div class="consumer-map-controls" style="display:flex;gap:8px;margin:8px 0">
+      <button type="button" class="secondary-map-btn" onclick="setConsumerMapLayer('street')">Road map</button>
+      <button type="button" class="secondary-map-btn" onclick="setConsumerMapLayer('satellite')">Satellite</button>
+    </div>
     <div id="consumerPinMap" style="height:290px;border-radius:12px;border:1px solid var(--border);overflow:hidden;background:#eee"></div>
     <div id="pinDistance" style="font-size:12px;text-align:center;margin:9px 0 12px;color:var(--text2)">Checking entrance pin…</div>
     <button id="confirmLocationBtn" class="share-btn" type="button" onclick="submitLocation()" disabled>
@@ -375,7 +380,7 @@
 const LPG_API_URL = 'https://uggqsvgxjhvdfkddqzyh.supabase.co/functions/v1/lpg-api';
 let _linkToken='', _apiKey='', _consumerNo='', _consumerName='', _consumerArea='';
 let _capturing=false, _captureReady=false, _readings=[], _bestFix=null, _watchId=null, _captureTimer=null;
-let _rawPosition=null, _entrancePosition=null, _consumerMap=null, _consumerMarker=null;
+let _rawPosition=null, _entrancePosition=null, _consumerMap=null, _consumerMarker=null, _consumerStreetLayer=null, _consumerSatelliteLayer=null, _consumerMapLayer='street';
 
 function validPublicKey(key) {
   try {
@@ -468,13 +473,22 @@ function showEntranceMap(c){
   if(!window.L){document.getElementById('pinDistance').textContent='Map unavailable; your precise GPS position will be used as the entrance pin.';document.getElementById('confirmLocationBtn').disabled=false;return;}
   if(!_consumerMap){
     _consumerMap=L.map('consumerPinMap',{zoomControl:true}).setView([c.lat,c.lng],19);
-    L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',{maxZoom:20,attribution:'© OpenStreetMap contributors © CARTO'}).addTo(_consumerMap);
+    _consumerStreetLayer=L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',{maxZoom:22,attribution:'© OpenStreetMap contributors © CARTO'});
+    _consumerSatelliteLayer=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Tiles © Esri'});
+    _consumerStreetLayer.addTo(_consumerMap);_consumerMapLayer='street';
     _consumerMap.on('click',e=>{if(_consumerMarker){_consumerMarker.setLatLng(e.latlng);updateEntranceDistance();}});
   }else _consumerMap.setView([c.lat,c.lng],19);
   if(_consumerMarker)_consumerMarker.remove();
   _consumerMarker=L.marker([c.lat,c.lng],{draggable:true}).addTo(_consumerMap);
   _consumerMarker.on('dragend',updateEntranceDistance);
   updateEntranceDistance();setTimeout(()=>_consumerMap.invalidateSize(),180);
+}
+function setConsumerMapLayer(which){
+  if(!_consumerMap)return;
+  if(_consumerMapLayer==='street'&&_consumerStreetLayer)_consumerMap.removeLayer(_consumerStreetLayer);
+  if(_consumerMapLayer==='satellite'&&_consumerSatelliteLayer)_consumerMap.removeLayer(_consumerSatelliteLayer);
+  _consumerMapLayer=which==='satellite'?'satellite':'street';
+  (_consumerMapLayer==='satellite'?_consumerSatelliteLayer:_consumerStreetLayer).addTo(_consumerMap);
 }
 function updateEntranceDistance(){
   const btn=document.getElementById('confirmLocationBtn'),el=document.getElementById('pinDistance');
