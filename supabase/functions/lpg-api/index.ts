@@ -1115,7 +1115,7 @@ Deno.serve(async (req) => {
           return Response.json({error:"Select 1–500 consumers per batch"},{status:400,headers:cors});
         const baseUrl=String(body.base_url||"").trim();
         if(!/^https:\/\//i.test(baseUrl)||baseUrl.length>500) return Response.json({error:"A published HTTPS capture page URL is required"},{status:400,headers:cors});
-        const requested=[...new Set(body.consumers.map((item:any)=>String(item?.consumer_no||"").trim()).filter((c:string)=>c&&c.length<=40))];
+        const requested:string[]=[...new Set<string>(body.consumers.map((item:any)=>String(item?.consumer_no||"").trim()).filter((c:string)=>c&&c.length<=40))];
         if(!requested.length) return Response.json({error:"No valid consumer numbers selected"},{status:400,headers:cors});
         const {data:masterRows,error:masterErr}=await db.from("lpg_masters").select("consumer_no,consumer_name,mobile,area,status").in("consumer_no",requested);
         if(masterErr) return Response.json({error:"Could not verify selected consumers: "+masterErr.message},{status:503,headers:cors});
