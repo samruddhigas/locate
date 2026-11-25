@@ -401,7 +401,7 @@ If the Library copy is unavailable, search for the exact filename. Do not infer 
 ## 14. Current handover baseline — concise snapshot
 
 **Current checked state: 26 November 2026**
-- **Canonical repository:** samruddhigas/locate, branch main; latest GPS responsiveness source SHA: d861c0b88e456d1e39a23f0ea838a2a670b90589 (later documentation commits supersede it).
+- **Canonical repository:** samruddhigas/locate, branch main; latest GPS/offline-queue source SHA: 4f2de4c6fda2969075d574612ff67dce2bf38f07 (later documentation commits supersede it).
 - **Private mirror:** samruddhigas/SAMRUDDHI-DELIVERY-APP; automated 5-minute sync workflow installed, with manual source copy made. Check the latest sync workflow and validation runs before claiming the mirror is current.
 - **Production Supabase:** only uggqsvgxjhvdfkddqzyh, ACTIVE_HEALTHY.
 - **Edge Functions:** lpg-api v52 ACTIVE; deliveryapp v3 ACTIVE.
@@ -715,4 +715,5 @@ No production customer master, delivered-cylinder, pending-booking, or completio
 
 ### Handover synchronization
 - GitHub master updated after the source, migration, deployment and test changes.
-- ChatGPT Library reference must be refreshed from this final master content after the deployment status is confirmed.
+- ChatGPT Library reference SAMRUDDHI_LPG_PROJECT_HANDOVER.md was overwritten successfully with the updated section 20 and current release details in the same session.
+- Private repository PROJECT_COMPLETION_STATUS.md was also updated with the v52 offline GPS fix, migration and verification status.
