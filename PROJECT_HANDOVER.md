@@ -43,7 +43,7 @@ The system is intended to make daily office and delivery work easier without req
 - Repository: https://github.com/samruddhigas/locate
 - Default branch: `main`
 - Latest feature release commits: `ab7a842a147844942ff3557fc5f71826eedd75ad` (GPS map upgrade) and `2dbaa177963a7f29ccc7e2489f497aa6255aa0da` (canonical customer-link routing); the handover synchronization commit follows.
-- Latest commit page: https://github.com/samruddhigas/locate/commit/aa2acc73e6c9fe83f90c3ceffccc8da86795816c
+- Latest code release page: https://github.com/samruddhigas/locate/commit/2dbaa177963a7f29ccc7e2489f497aa6255aa0da
 
 ### Supabase production project
 - Project name: `Samruddhi-LPG-Production`
