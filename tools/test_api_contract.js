@@ -90,5 +90,11 @@ assert.ok(dashboard.includes("APP.pendingGps"), "Embedded DeliveryApp must persi
 assert.ok(dashboard.includes("async function searchGpsOnlyConsumers()"), "Embedded DeliveryApp must support GPS-only consumer search");
 assert.ok(dashboard.includes("'delivery_manual_lookup'"), "Embedded GPS-only search must use the dedicated manual lookup permission");
 assert.ok(api.includes('DELIVERY_BOY_MANUAL_LOOKUP'), "Manual GPS-only captures must be clearly labeled in the GPS registry");
+assert.ok(app.includes("captureMode!=='delivery_after_mark_delivered'"), "Mark Done GPS capture must not wait for entrance-map confirmation");
+assert.ok(app.includes("warmFix||await new Promise"), "DeliveryApp must reuse a fresh live GPS fix before requesting another fix");
+assert.ok(dashboard.includes("const warmFix="), "Dashboard delivery GPS must reuse its fresh live GPS fix");
+assert.ok(dashboard.includes("const payload={booking_key:String(d.orderNo||d.id||''),consumer_no:String(d.consumerNo)"), "Dashboard Mark Done must submit a direct GPS observation without a map-modal pause");
+assert.ok(dashboard.includes("box.querySelectorAll('[data-location-exception]')"), "Office exception review buttons must be wired to authenticated review actions");
+
 
 console.log("API contract tests passed: GPS gate, central completion, offline queue, approved GPS routes, import isolation, and security guards.");
