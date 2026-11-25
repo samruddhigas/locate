@@ -91,6 +91,7 @@ async function completeBooking(r,key,button){
   else if(check.result==='deviation')note+=' LOCATION DEVIATION: '+Math.round(check.distance_m||0)+' m from the office-approved pin. An exception has been recorded for office review.';
   else if(check.result==='nearby_warning')note+=' Location warning: '+Math.round(check.distance_m||0)+' m from the approved pin. An exception has been recorded for office review.';
   else if(check.result==='outlier_review')note+=' This visit differs from the temporary location cluster and has been flagged for office review.';
+  else if(check.result==='same_day_repeat')note+=' This is another booking on the same day; it does not count as a separate location confirmation.';
   $('message').textContent=note;
  }catch(err){
   if(err.message==='OFFLINE_QUEUE'||!navigator.onLine){
