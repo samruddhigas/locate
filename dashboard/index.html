@@ -6329,7 +6329,7 @@ async function markDone(id) {
     APP.pendingCompletions=(APP.pendingCompletions||[]).filter(x=>x.booking_key!==record.booking_key);
     save();
     const check=result.location_check||{};
-    const locationNote=check.result==='deviation'?' · GPS DEVIATION '+Math.round(check.distance_m||0)+'m (office review)':check.result==='nearby_warning'?' · GPS warning '+Math.round(check.distance_m||0)+'m':check.result==='temporary_approved'?' · temporary location verified (3 visits)':check.result==='provisional'?' · location provisional (2 visits)':'';
+    const locationNote=check.result==='deviation'?' · GPS DEVIATION '+Math.round(check.distance_m||0)+'m (office review)':check.result==='nearby_warning'?' · GPS warning '+Math.round(check.distance_m||0)+'m':check.result==='temporary_approved'?' · temporary location verified (3 separate days)':check.result==='provisional'?' · location provisional (2 separate days)':check.result==='same_day_repeat'?' · same-day repeat does not add another location confirmation':'';
     toast((d.gpsAt==='queued'?'✅ Delivered · GPS waiting to sync':'✅ Delivered · central record saved')+locationNote,check.result==='deviation'?'#b45309':undefined);renderAll();
   }catch(e){
     if(e.message==='OFFLINE_QUEUE'||!navigator.onLine){
