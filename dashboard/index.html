@@ -6432,7 +6432,7 @@ async function captureDeliveryGPS(d, captureMode='delivery_after_mark_delivered'
     const best = warmFix||await new Promise((resolve,reject)=>{
       let watch=null,timer=null,bestFix=null,finished=false;
       const finish=err=>{if(finished)return;finished=true;if(watch!==null)navigator.geolocation.clearWatch(watch);if(timer!==null)clearTimeout(timer);if(err)reject(err);else resolve(bestFix);};
-      timer=setTimeout(()=>finish(bestFix&&bestFix.acc<=30?null:new Error('GPS accuracy is '+Math.round(bestFix?.acc||0)+' m. Need 30 m or better; retry in a more open place.')),5000);
+      timer=setTimeout(()=>finish(bestFix&&bestFix.acc<=30?null:new Error('GPS accuracy is '+Math.round(bestFix?.acc||0)+' m. Need 30 m or better; retry in a more open place.')),3000);
       try { watch=navigator.geolocation.watchPosition(pos=>{
         const c=pos.coords,acc=Number(c.accuracy);if(!Number.isFinite(acc)||acc<=0||acc>1000)return;
         const fix={lat:Number(c.latitude),lng:Number(c.longitude),acc,ts:Number(pos.timestamp)||Date.now()};
