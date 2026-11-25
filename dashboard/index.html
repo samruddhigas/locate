@@ -3302,6 +3302,7 @@ function renderDropdownOptions(search) {
       <label for="fopt_${i}">${escHtml(v)}</label>
     </div>`;
   }).join('');
+    box.querySelectorAll('[data-location-exception]').forEach(btn=>btn.addEventListener('click',()=>reviewDeliveryLocationException(btn.dataset.locationException)));
 
   // Attach change listeners (avoids inline onclick issues)
   list.querySelectorAll('input[type=checkbox]').forEach(cb => {
