@@ -662,17 +662,24 @@ Deno.serve(async (req) => {
         .select("consumer_no,lat,lng,pin_lat,pin_lng,status,source")
         .in("consumer_no",consumerNos);
       if (gpsError) return Response.json({error:"Could not verify approved customer GPS pins"}, {status:503,headers:cors});
+      const {data:temporaryRows,error:temporaryError}=await db.from("lpg_gps_temporary")
+        .select("consumer_no,lat,lng,status,confirmation_count")
+        .in("consumer_no",consumerNos).eq("status","temporary_approved");
+      if (temporaryError) return Response.json({error:"Could not verify temporary delivery-location pins"}, {status:503,headers:cors});
       const gpsByConsumer=new Map((gpsRows||[]).filter((g:any)=>g.status==="approved"||g.source==="staff_pin").map((g:any)=>[String(g.consumer_no),g]));
+      const temporaryByConsumer=new Map((temporaryRows||[]).map((g:any)=>[String(g.consumer_no),g]));
       const routeStops:any[]=[];
       for(const stop of requested){
         const assigned=(assignments||[]).find((r:any)=>String(r.consumer_no)===stop.consumer_no &&
           (String(r.order_no||"")===stop.booking_key || String(r.id||"")===stop.booking_key));
         if(!assigned) return Response.json({error:"Booking "+stop.booking_key+" is not assigned to "+deliveryMan}, {status:409,headers:cors});
         const gps:any=gpsByConsumer.get(stop.consumer_no);
-        const lat=Number(gps?.pin_lat??gps?.lat),lng=Number(gps?.pin_lng??gps?.lng);
-        if(!gps||!Number.isFinite(lat)||lat < -90||lat>90||!Number.isFinite(lng)||lng < -180||lng>180)
-          return Response.json({error:"Consumer "+stop.consumer_no+" does not have an approved GPS pin"}, {status:409,headers:cors});
-        routeStops.push({...stop,lat,lng});
+        const temporary:any=temporaryByConsumer.get(stop.consumer_no);
+        const location=gps||temporary;
+        const lat=Number(gps?.pin_lat??gps?.lat??temporary?.lat),lng=Number(gps?.pin_lng??gps?.lng??temporary?.lng);
+        if(!location||!Number.isFinite(lat)||lat < -90||lat>90||!Number.isFinite(lng)||lng < -180||lng>180)
+          return Response.json({error:"Consumer "+stop.consumer_no+" has no office-approved or 3-delivery temporary GPS pin"}, {status:409,headers:cors});
+        routeStops.push({...stop,lat,lng,location_source:gps?"office_approved":"temporary_3_delivery"});
       }
 
       const {data:depot,error:depotError}=await db.from("lpg_locations")
@@ -710,7 +717,7 @@ Deno.serve(async (req) => {
       const op = String(body.op || "");
       if (op === "list") {
         let query = db.from("lpg_delivery_completions")
-          .select("booking_key,consumer_no,order_no,delivery_man,qty,completed_at")
+          .select("booking_key,consumer_no,order_no,delivery_man,qty,completed_at,gps_status,location_check_status,location_distance_m,temporary_location_status,location_exception_id")
           .order("completed_at", { ascending: false }).limit(10000);
         if (user.role === "delivery") query = query.eq("delivery_man", user.name);
         else if (!["admin", "staff"].includes(user.role))
@@ -752,25 +759,34 @@ Deno.serve(async (req) => {
       );
       if (!assigned) return Response.json({ error: "This booking is no longer assigned to your delivery account. Refresh bookings and contact the office if this is incorrect." }, { status: 403, headers: cors });
 
-      const { data: gps, error: gpsError } = await db.from("lpg_gps")
+      const captureWindowStart = new Date(completedAt.getTime() - 30 * 60 * 1000).toISOString();
+      const captureWindowEnd = new Date(completedAt.getTime() + 5 * 60 * 1000).toISOString();
+      const {data:visitGps,error:visitGpsError}=await db.from("lpg_gps_history")
+        .select("raw_lat,raw_lng,pin_lat,pin_lng,acc,captured_at,capture_mode")
+        .eq("consumer_no",consumerNo).eq("captured_by",user.name)
+        .eq("capture_mode","delivery_after_mark_delivered")
+        .gte("captured_at",captureWindowStart).lte("captured_at",captureWindowEnd)
+        .order("captured_at",{ascending:false}).limit(1).maybeSingle();
+      if(visitGpsError) return Response.json({error:"Could not verify this delivery's GPS observation: "+visitGpsError.message},{status:503,headers:cors});
+      const {data:gps,error:gpsError}=await db.from("lpg_gps")
         .select("lat,lng,acc,pin_lat,pin_lng,captured_at,status")
-        .eq("consumer_no", consumerNo).maybeSingle();
-      if (gpsError) return Response.json({ error: "Could not verify saved GPS. Please retry after GPS sync." }, { status: 503, headers: cors });
-      const gpsLat = Number(gps?.pin_lat ?? gps?.lat);
-      const gpsLng = Number(gps?.pin_lng ?? gps?.lng);
-      const gpsAccuracy = Number(gps?.acc);
-      const hasUsableGps = !!gps && Number.isFinite(gpsLat) && gpsLat >= -90 && gpsLat <= 90 &&
-        Number.isFinite(gpsLng) && gpsLng >= -180 && gpsLng <= 180 &&
-        Number.isFinite(gpsAccuracy) && gpsAccuracy >= 0 && gpsAccuracy <= 30 && !!gps.captured_at;
+        .eq("consumer_no",consumerNo).maybeSingle();
+      if(gpsError) return Response.json({error:"Could not verify saved GPS. Please retry after GPS sync."},{status:503,headers:cors});
+      const gpsLat=Number(visitGps?.pin_lat ?? (gps?.status==="approved" ? NaN : gps?.pin_lat ?? gps?.lat));
+      const gpsLng=Number(visitGps?.pin_lng ?? (gps?.status==="approved" ? NaN : gps?.pin_lng ?? gps?.lng));
+      const gpsAccuracy=Number(visitGps?.acc ?? (gps?.status==="approved" ? NaN : gps?.acc));
+      const gpsCapturedAt=visitGps?.captured_at ?? (gps?.status==="approved" ? null : gps?.captured_at);
+      const hasUsableGps=Number.isFinite(gpsLat)&&gpsLat>=-90&&gpsLat<=90&&Number.isFinite(gpsLng)&&gpsLng>=-180&&gpsLng<=180&&
+        Number.isFinite(gpsAccuracy)&&gpsAccuracy>=0&&gpsAccuracy<=30&&!!gpsCapturedAt;
 
       const record = {
         booking_key: bookingKey, consumer_no: consumerNo,
         order_no: assigned.order_no || null, pending_id: assigned.id,
         delivery_man: user.name, qty: Math.max(1, Number(assigned.qty) || 1),
-        completed_at: completedAt.toISOString(), gps_captured_at: hasUsableGps ? gps.captured_at : null,
+        completed_at: completedAt.toISOString(), gps_captured_at: hasUsableGps ? gpsCapturedAt : null,
         gps_lat: hasUsableGps ? gpsLat : null, gps_lng: hasUsableGps ? gpsLng : null,
         gps_accuracy: hasUsableGps ? gpsAccuracy : null,
-        gps_status: hasUsableGps ? "captured_pending_office_review" : "not_captured",
+        gps_status: hasUsableGps ? "captured_pending_location_check" : "not_captured",
         source: "deliveryapp"
       };
       const { data, error } = await db.from("lpg_delivery_completions")
@@ -785,7 +801,27 @@ Deno.serve(async (req) => {
         }
         return Response.json({ error: "Could not save delivery completion: " + error.message }, { status: 503, headers: cors });
       }
-      return Response.json({ success: true, completion: data }, { headers: cors });
+      let locationCheck:any={result:"not_checked"};
+      if(hasUsableGps){
+        const {data:check,error:checkError}=await db.rpc("record_lpg_delivery_location_observation",{
+          p_booking_key:bookingKey,p_consumer_no:consumerNo,p_delivery_man:user.name,
+          p_lat:gpsLat,p_lng:gpsLng,p_accuracy:gpsAccuracy,p_captured_at:gpsCapturedAt,
+          p_exception_reason:String(body.exception_reason||"").slice(0,300)||null
+        });
+        if(checkError){
+          await db.from("lpg_delivery_completions").update({gps_status:"captured_location_check_failed",location_check_status:"check_failed"}).eq("booking_key",bookingKey);
+          return Response.json({error:"Delivery GPS was captured, but location verification could not be completed: "+checkError.message,completion_saved:true},{status:503,headers:cors});
+        }
+        locationCheck=check||{result:"not_checked"};
+        await db.from("lpg_delivery_completions").update({
+          gps_status:"captured_"+String(locationCheck.result||"checked"),
+          location_check_status:String(locationCheck.result||"checked"),
+          location_distance_m:locationCheck.distance_m??null,
+          temporary_location_status:["candidate","provisional","temporary_approved"].includes(locationCheck.result)?locationCheck.result:null,
+          location_exception_id:locationCheck.exception_id??null
+        }).eq("booking_key",bookingKey);
+      }
+      return Response.json({success:true,completion:data,location_check:locationCheck},{headers:cors});
     }
 
     // Central persistent locations shared across devices/sessions. Read for all roles; mutate only admins.
@@ -960,8 +996,25 @@ Deno.serve(async (req) => {
       const { data: existing, error: readError } = await db.from("lpg_gps")
         .select("lat,lng,acc,count,status,raw_lat,raw_lng,pin_lat,pin_lng").eq("consumer_no", consumerNo).maybeSingle();
       if (readError) return Response.json({ error: readError.message }, { status: 400, headers: cors });
-      // A delivery capture must never silently replace an already approved office pin.
-      if (existing?.status === "approved") return Response.json({ ignored:true, status:"approved", message:"An approved location already exists; office review is required to change it." }, { headers: cors });
+      // Keep the office-approved master pin immutable, but still record the fresh
+      // delivery visit fix so deviation checks compare this visit, not the old pin.
+      if (existing?.status === "approved") {
+        const approvedCaptureMode = String(body.capture_mode || "delivery_after_mark_delivered").slice(0,40);
+        const approvedCaptureSource = approvedCaptureMode === "delivery_after_mark_delivered" ? "DELIVERY_BOY_DELIVERY" :
+          approvedCaptureMode === "delivery_manual_lookup" ? "DELIVERY_BOY_MANUAL_LOOKUP" : "DELIVERY_BOY_INITIAL_MAPPING";
+        const approvedCapturedAt = new Date().toISOString();
+        const {error:approvedHistoryErr}=await db.from("lpg_gps_history").insert({
+          consumer_no:consumerNo,raw_lat:rawLat,raw_lng:rawLng,pin_lat:lat,pin_lng:lng,acc,
+          reading_count:cleanReadings.length,readings:cleanReadings,
+          pin_offset_m:Number(Math.hypot((lat-rawLat)*111320,(lng-rawLng)*111320*Math.cos(rawLat*Math.PI/180)).toFixed(2)),
+          source:approvedCaptureSource,capture_mode:approvedCaptureMode,captured_by:user.name,
+          status:"delivery_observation",captured_at:approvedCapturedAt
+        });
+        if(approvedHistoryErr) return Response.json({error:"Approved customer pin was preserved, but this visit's GPS observation could not be saved: "+approvedHistoryErr.message},{status:503,headers:cors});
+        return Response.json({ignored:true,status:"approved",observation_saved:true,
+          observation:{raw_lat:rawLat,raw_lng:rawLng,pin_lat:lat,pin_lng:lng,acc,captured_at:approvedCapturedAt},
+          message:"Approved customer pin preserved. This delivery visit was recorded for location verification."},{headers:cors});
+      }
       const priorCount = existing ? Math.max(1, Number(existing.count) || 1) : 0;
       const n = priorCount + cleanReadings.length;
       // Keep the best reported fix instead of averaging offsets between adjacent houses.
@@ -991,6 +1044,33 @@ Deno.serve(async (req) => {
       if (error) return Response.json({ error: error.message }, { status: 400, headers: cors });
       const {error:historyErr}=await db.from("lpg_gps_history").insert({consumer_no:consumerNo,raw_lat:rawLat,raw_lng:rawLng,pin_lat:lat,pin_lng:lng,acc,reading_count:cleanReadings.length,readings:cleanReadings,pin_offset_m:Number(Math.hypot((lat-rawLat)*111320,(lng-rawLng)*111320*Math.cos(rawLat*Math.PI/180)).toFixed(2)),source:captureSource,capture_mode:captureMode,captured_by:user.name,status:"capturing",captured_at:capturedAt});
       return Response.json({ data, history_saved:!historyErr, history_error:historyErr?.message||null }, { headers: cors });
+    }
+
+    // Office review queue for delivery-location deviations and temporary-pin outliers.
+    if (action === "delivery_location_exceptions") {
+      if (!["admin","staff"].includes(user.role)) return Response.json({error:"Office permission required"},{status:403,headers:cors});
+      const op=String(body.op||"list");
+      if(op==="list"){
+        const status=String(body.status||"open");
+        let query=db.from("lpg_delivery_location_exceptions")
+          .select("id,booking_key,consumer_no,delivery_man,observed_lat,observed_lng,reference_lat,reference_lng,distance_m,accuracy_m,severity,reason,status,created_at,reviewed_by,reviewed_at")
+          .order("created_at",{ascending:false}).limit(1000);
+        if(status!=="all") query=query.eq("status",status);
+        const {data,error}=await query;
+        if(error)return Response.json({error:"Could not load location exceptions: "+error.message},{status:503,headers:cors});
+        return Response.json({data:data||[]},{headers:cors});
+      }
+      if(["resolve","dismiss"].includes(op)){
+        const id=String(body.id||"");
+        const reason=String(body.reason||"").trim();
+        if(!id||reason.length<3||reason.length>300)return Response.json({error:"Select an exception and enter a review note (3–300 characters)"},{status:400,headers:cors});
+        const {data,error}=await db.from("lpg_delivery_location_exceptions")
+          .update({status:op==="resolve"?"resolved":"dismissed",reviewed_by:user.name,reviewed_at:new Date().toISOString(),reason})
+          .eq("id",id).eq("status","open").select("id,status,reviewed_by,reviewed_at,reason").maybeSingle();
+        if(error||!data)return Response.json({error:"Exception was not found or has already been reviewed"},{status:409,headers:cors});
+        return Response.json({success:true,exception:data},{headers:cors});
+      }
+      return Response.json({error:"Unsupported exception operation"},{status:400,headers:cors});
     }
 
     // Complete GPS management API. All GPS table access is mediated here;
