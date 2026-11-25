@@ -168,6 +168,21 @@ else:
                                 failures.append(f"Generated DeliveryApp inline script {i} syntax error: {result.stderr.strip()}")
                     print(f"Generated DeliveryApp template: checked {len(generated_parser.ids)} IDs and {len(generated_parser.scripts)} inline scripts.")
 
+# Keep the WhatsApp customer links on the canonical root location page.
+legacy_capture_page = ROOT / "consumer-location" / "index.html"
+if legacy_capture_page.exists():
+    legacy_source = legacy_capture_page.read_text(encoding="utf-8")
+    if "window.location.search" not in legacy_source or "window.location.hash" not in legacy_source or "window.location.replace" not in legacy_source:
+        failures.append("Legacy consumer-location page must redirect to the canonical page while preserving token query and hash")
+dashboard_source_for_links = dashboard_path.read_text(encoding="utf-8") if dashboard_path.exists() else ""
+if "function consumerCapturePageUrl() {\n  return getBaseUrl() + '/';\n}" not in dashboard_source_for_links:
+    failures.append("Dashboard WhatsApp GPS links must use the canonical root customer location page")
+customer_page = ROOT / "index.html"
+if customer_page.exists():
+    customer_source = customer_page.read_text(encoding="utf-8")
+    if "function setConsumerMapLayer(which)" not in customer_source or "setConsumerMapLayer('satellite')" not in customer_source:
+        failures.append("Canonical customer location page is missing road/satellite map controls")
+
 api_test = subprocess.run(["node", str(ROOT / "tools" / "test_api_contract.js")], capture_output=True, text=True)
 if api_test.returncode:
     failures.append("API contract tests failed: " + api_test.stderr.strip())
