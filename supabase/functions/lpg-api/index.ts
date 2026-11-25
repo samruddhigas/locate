@@ -741,13 +741,37 @@ Deno.serve(async (req) => {
 
       const { data: existingCompletion, error: existingCompletionError } = await db
         .from("lpg_delivery_completions")
-        .select("booking_key,consumer_no,delivery_man,completed_at")
+        .select("booking_key,consumer_no,delivery_man,completed_at,gps_captured_at,gps_lat,gps_lng,gps_accuracy,location_check_status,location_distance_m,temporary_location_status,location_exception_id")
         .eq("booking_key", bookingKey).maybeSingle();
       if (existingCompletionError) return Response.json({ error: "Could not verify existing completion" }, { status: 503, headers: cors });
       if (existingCompletion) {
         if (existingCompletion.delivery_man !== user.name || existingCompletion.consumer_no !== consumerNo)
           return Response.json({ error: "This booking is already completed under another account" }, { status: 409, headers: cors });
-        return Response.json({ success: true, already_saved: true, completion: existingCompletion }, { headers: cors });
+        let retryLocationCheck:any=null;
+        const checkStatus=String(existingCompletion.location_check_status||"not_checked");
+        const terminalChecks=["matched_approved","nearby_warning","deviation","candidate","provisional","temporary_approved","outlier_review","same_day_repeat"];
+        if(existingCompletion.gps_lat!==null&&existingCompletion.gps_lat!==undefined&&
+           existingCompletion.gps_lng!==null&&existingCompletion.gps_lng!==undefined&&
+           existingCompletion.gps_accuracy!==null&&existingCompletion.gps_captured_at&&!terminalChecks.includes(checkStatus)){
+          const {data:check,error:checkError}=await db.rpc("record_lpg_delivery_location_observation",{
+            p_booking_key:bookingKey,p_consumer_no:consumerNo,p_delivery_man:user.name,
+            p_lat:Number(existingCompletion.gps_lat),p_lng:Number(existingCompletion.gps_lng),
+            p_accuracy:Number(existingCompletion.gps_accuracy),p_captured_at:existingCompletion.gps_captured_at,
+            p_exception_reason:String(body.exception_reason||"").slice(0,300)||null
+          });
+          if(checkError)return Response.json({error:"Delivery was already saved, but its location check still needs retry: "+checkError.message,completion_saved:true},{status:503,headers:cors});
+          retryLocationCheck=check||{result:"not_checked"};
+          await db.from("lpg_delivery_completions").update({
+            gps_status:"captured_"+String(retryLocationCheck.result||"checked"),
+            location_check_status:String(retryLocationCheck.result||"checked"),
+            location_distance_m:retryLocationCheck.distance_m??null,
+            temporary_location_status:["candidate","provisional","temporary_approved"].includes(retryLocationCheck.result)?retryLocationCheck.result:null,
+            location_exception_id:retryLocationCheck.exception_id??null
+          }).eq("booking_key",bookingKey);
+        }
+        return Response.json({success:true,already_saved:true,completion:existingCompletion,
+          location_check:retryLocationCheck||{result:checkStatus,distance_m:existingCompletion.location_distance_m,
+          exception_id:existingCompletion.location_exception_id}},{headers:cors});
       }
 
       const { data: assignments, error: assignmentError } = await db.from("lpg_pending")
