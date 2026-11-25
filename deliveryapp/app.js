@@ -205,9 +205,13 @@ async function captureGps(r,button,captureMode='delivery_initial_mapping',option
   const accuracy=best.acc;
   let pin={lat:best.lat,lng:best.lng};
   // Every GPS capture pauses for an entrance-pin confirmation. Silent mode only suppresses alerts.
-  const selected=await chooseGpsPin(r,best);
-  if(!selected){if(status)status.textContent='Map selection cancelled. No location was submitted.';button.textContent='Capture GPS again';return {saved:false,message:'Pin selection cancelled.'};}
-  pin=selected;
+  // Mark Done must be one-tap: use the measured fix directly. The draggable
+  // entrance-pin map remains available for initial/manual mapping, not every delivery.
+  if(captureMode!=='delivery_after_mark_delivered'){
+   const selected=await chooseGpsPin(r,best);
+   if(!selected){if(status)status.textContent='Map selection cancelled. No location was submitted.';button.textContent='Capture GPS again';return {saved:false,message:'Pin selection cancelled.'};}
+   pin=selected;
+  }
   const payload={booking_key:String(r.booking||''),consumer_no:r.consumer,raw_lat:best.lat,raw_lng:best.lng,pin_lat:pin.lat,pin_lng:pin.lng,lat:pin.lat,lng:pin.lng,acc:accuracy,
    // Keep the device GPS fix separate from the entrance pin selected on the map.
    readings:[{lat:best.lat,lng:best.lng,acc:accuracy,ts:best.ts}],capture_mode:captureMode};
