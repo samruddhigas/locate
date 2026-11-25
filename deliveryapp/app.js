@@ -68,11 +68,11 @@ async function completeBooking(r,key,button){
  if(!record.booking_key||!record.consumer_no){alert('Booking identity is incomplete. Refresh bookings and contact the office.');return}
  button.disabled=true;button.textContent='Getting location…';
  let gpsSaved=false,gpsMessage='';
- if(!state.gpsCaptured.has(key)){
-  const gpsResult=await captureGps(r,button,'delivery_after_mark_delivered',{silent:true});
-  gpsSaved=!!gpsResult?.saved;
-  gpsMessage=gpsResult?.message||'';
- }else gpsSaved=true;
+ // Every physical delivery gets its own fresh visit observation. A GPS point captured
+ // earlier for initial mapping must never be reused to verify a later delivery.
+ const gpsResult=await captureGps(r,button,'delivery_after_mark_delivered',{silent:true});
+ gpsSaved=!!gpsResult?.saved;
+ gpsMessage=gpsResult?.message||'';
  button.textContent='Saving delivery…';
  try{
   if(!navigator.onLine)throw new Error('OFFLINE_QUEUE');
@@ -83,7 +83,14 @@ async function completeBooking(r,key,button){
   state.done.add(key);
   state.pendingCompletions=state.pendingCompletions.filter(x=>x.booking_key!==record.booking_key);
   persist();render();
-  const note=gpsSaved?'Delivery saved with GPS for office review.':(gpsQueued?'Delivery saved. GPS was captured and is waiting to sync.':('Delivery saved. GPS not captured: '+(gpsMessage||'location signal was weak')+'. You can capture it later using GPS-only search.'));
+  const check=result.location_check||{};
+  let note=gpsSaved?'Delivery saved with this visit GPS recorded.':(gpsQueued?'Delivery saved. GPS was captured and is waiting to sync.':('Delivery saved. GPS not captured: '+(gpsMessage||'location signal was weak')+'. You can capture it later using GPS-only search.'));
+  if(check.result==='temporary_approved')note+=' Temporary location verified after 3 consistent deliveries and is now eligible for route planning.';
+  else if(check.result==='provisional')note+=' Temporary location is provisional ('+(check.temporary_confirmation_count||2)+' consistent deliveries). One more consistent delivery will make it route-eligible.';
+  else if(check.result==='candidate')note+=' First location observation recorded; more consistent deliveries are needed.';
+  else if(check.result==='deviation')note+=' LOCATION DEVIATION: '+Math.round(check.distance_m||0)+' m from the office-approved pin. An exception has been recorded for office review.';
+  else if(check.result==='nearby_warning')note+=' Location warning: '+Math.round(check.distance_m||0)+' m from the approved pin. An exception has been recorded for office review.';
+  else if(check.result==='outlier_review')note+=' This visit differs from the temporary location cluster and has been flagged for office review.';
   $('message').textContent=note;
  }catch(err){
   if(err.message==='OFFLINE_QUEUE'||!navigator.onLine){
@@ -176,21 +183,21 @@ async function captureGps(r,button,captureMode='delivery_initial_mapping',option
     if(deadline!==null)clearTimeout(deadline);
     if(err)reject(err);else resolve(bestFix);
    };
-   deadline=setTimeout(()=>finish(bestFix?null:new Error('No reliable GPS fix yet. Move to an open area and retry.')),18000);
+   deadline=setTimeout(()=>finish(bestFix&&bestFix.acc<=30?null:new Error('GPS accuracy is '+Math.round(bestFix?.acc||0)+' m. Need 30 m or better; retry in a more open place.')),5000);
    try{
     watchId=navigator.geolocation.watchPosition(pos=>{
      const c=pos.coords,acc=Number(c.accuracy);
      if(!Number.isFinite(acc)||acc<=0||acc>1000)return;
      const fix={lat:Number(c.latitude),lng:Number(c.longitude),acc,ts:Number(pos.timestamp)||Date.now()};
-     if(!Number.isFinite(fix.lat)||!Number.isFinite(fix.lng))return;
+     if(!Number.isFinite(fix.lat)||!Number.isFinite(fix.lng)||Date.now()-fix.ts>20000)return;
      if(!bestFix||fix.acc<bestFix.acc)bestFix=fix;
      button.textContent='Best GPS '+Math.round(bestFix.acc)+' m…';
      if(status)status.textContent='Improving GPS fix · best so far '+Math.round(bestFix.acc)+' m';
      // Stop as soon as the phone supplies a genuinely good fix.
-     if(bestFix.acc<=10)finish();
+     if(bestFix.acc<=30)finish();
     },err=>{
      if(err.code===1)finish(new Error('Location permission denied. Allow precise location for this app.'));else if(status)status.textContent='Waiting for GPS signal…';
-    },{enableHighAccuracy:true,timeout:26000,maximumAge:0});
+    },{enableHighAccuracy:true,timeout:8000,maximumAge:15000});
    }catch(e){finish(e)}
   });
   if(!best||best.acc>30)throw new Error('Best GPS accuracy was '+Math.round(best?.acc||0)+' m. Need 30 m or better. Keep Location enabled and retry in a more open place.');
