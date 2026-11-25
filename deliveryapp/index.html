@@ -28,6 +28,14 @@
   <footer>Use HPCL records as the official delivery confirmation source.</footer>
 </div>
 <dialog id="stopDialog"><div class="dialog-content"><button id="closeDialog" class="close" aria-label="Close">×</button><div id="stopDetail"></div></div></dialog>
+<dialog id="pinPickerDialog"><div class="pin-picker-dialog-content">
+  <div class="pin-picker-heading"><div><b>Confirm customer entrance</b><div id="pinPickerConsumer" class="small"></div></div><button id="pinPickerClose" class="quiet" type="button" aria-label="Cancel map selection">×</button></div>
+  <div id="pinPickerAccuracy" class="small"></div>
+  <div class="pin-map-controls"><button id="pinPickerStreet" class="secondary" type="button">Road map</button><button id="pinPickerSatellite" class="secondary" type="button">Satellite</button></div>
+  <div id="pinPickerMap" class="pin-map" aria-label="Map to select customer entrance"></div>
+  <div id="pinPickerCoords" class="pin-map-coords"></div>
+  <div class="pin-map-actions"><button id="pinPickerCancel" class="secondary" type="button">Cancel</button><button id="pinPickerConfirm" class="primary" type="button">Confirm entrance pin</button></div>
+</div></dialog>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script src="app.js"></script>
 </body></html>
