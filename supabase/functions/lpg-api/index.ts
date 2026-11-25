@@ -1119,10 +1119,10 @@ Deno.serve(async (req) => {
         if(!requested.length) return Response.json({error:"No valid consumer numbers selected"},{status:400,headers:cors});
         const {data:masterRows,error:masterErr}=await db.from("lpg_masters").select("consumer_no,consumer_name,mobile,area,status").in("consumer_no",requested);
         if(masterErr) return Response.json({error:"Could not verify selected consumers: "+masterErr.message},{status:503,headers:cors});
-        const masters=new Map((masterRows||[]).map((m:any)=>[String(m.consumer_no),m]));
+        const masters=new Map<string,any>((masterRows||[]).map((m:any)=>[String(m.consumer_no),m]));
         const {data:existingGps,error:gpsErr}=await db.from("lpg_gps").select("consumer_no,status").in("consumer_no",requested);
         if(gpsErr) return Response.json({error:"Could not check existing GPS coverage: "+gpsErr.message},{status:503,headers:cors});
-        const approved=new Set((existingGps||[]).filter((g:any)=>g.status==="approved").map((g:any)=>String(g.consumer_no)));
+        const approved=new Set<string>((existingGps||[]).filter((g:any)=>g.status==="approved").map((g:any)=>String(g.consumer_no)));
         const out:any[]=[]; const expiresAt=new Date(Date.now()+7*24*60*60*1000).toISOString();
         for(const cno of requested){
           const master=masters.get(cno); if(!master||approved.has(cno)||String(master.status||"").toLowerCase()==="inactive") continue;
@@ -1641,7 +1641,7 @@ Deno.serve(async (req) => {
         ? body.filters
         : [];
 
-      let countQuery = db
+      let countQuery:any = db
         .from(table)
         // Tables use different primary-key names (lpg_masters has consumer_no,
         // lpg_remarks has consumer_no); count * avoids assuming an id column.
