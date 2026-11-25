@@ -2,11 +2,15 @@
 
 .gps-lookup{margin:12px 0}.gps-lookup h2{font-size:1.05rem;margin:0 0 6px}.gps-search-results{display:grid;gap:8px;margin-top:10px}.gps-search-result{display:grid;gap:5px;padding:12px;border:1px solid #dbe4e0;border-radius:12px}.gps-search-result span,.gps-search-result small{color:#53635d}.gps-search-result button{margin-top:5px}
 
-.pin-picker{margin-top:14px;padding:12px;border:1px solid #cbdad4;border-radius:14px;background:#f8fbf9;color:#20342d}
-.pin-picker>p{font-size:12px;color:#53635d;margin:6px 0 10px}
+#pinPickerDialog{border:0;border-radius:18px;padding:0;width:min(680px,calc(100% - 20px));max-height:94vh;box-shadow:0 18px 60px #0005}
+#pinPickerDialog::backdrop{background:#07130fbd}
+.pin-picker-dialog-content{padding:16px;max-height:94vh;overflow:auto}
+.pin-picker-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.pin-picker-heading b{font-size:17px}
+.pin-picker-dialog-content> .small{margin:7px 0}
 .pin-map-controls,.pin-map-actions{display:flex;gap:8px;margin:8px 0}
 .pin-map-controls button,.pin-map-actions button{flex:1;min-width:0}
-.pin-map{height:290px;min-height:250px;border:1px solid #cbd5d1;border-radius:12px;overflow:hidden;background:#e8eeeb}
+.pin-map{height:min(54vh,420px);min-height:250px;border:1px solid #cbd5d1;border-radius:12px;overflow:hidden;background:#e8eeeb}
 .pin-map-coords{font-size:12px;color:#17673d;margin:8px 0}
 .pin-map-coords.pin-too-far{color:#b42318}
 .pin-map-actions .primary{margin:0}
