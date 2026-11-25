@@ -6295,7 +6295,7 @@ async function loadDeliveryLocationExceptions(){
     const rows=Array.isArray(result.data)?result.data:[];
     if(!rows.length){box.innerHTML='<div style="padding:10px;color:var(--green)">No open delivery-location exceptions.</div>';return;}
     const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    box.innerHTML=rows.map(x=>'<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;background:var(--surface)"><b>'+esc(x.consumer_no)+' · '+esc(x.severity).toUpperCase()+'</b><div style="font-size:12px;color:var(--text2);margin:4px 0">'+esc(x.delivery_man)+' · '+Math.round(Number(x.distance_m)||0)+' m · '+esc(new Date(x.created_at).toLocaleString('en-IN'))+'</div><div style="font-size:12px">'+esc(x.reason)+'</div><button class="btn" style="margin-top:8px" onclick="reviewDeliveryLocationException(\''+esc(x.id)+'\')">Review / resolve</button></div>').join('');
+    box.innerHTML=rows.map(x=>'<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;background:var(--surface)"><b>'+esc(x.consumer_no)+' · '+esc(x.severity).toUpperCase()+'</b><div style="font-size:12px;color:var(--text2);margin:4px 0">'+esc(x.delivery_man)+' · '+Math.round(Number(x.distance_m)||0)+' m · '+esc(new Date(x.created_at).toLocaleString('en-IN'))+'</div><div style="font-size:12px">'+esc(x.reason)+'</div><button class="btn" style="margin-top:8px" data-location-exception="'+esc(x.id)+'">Review / resolve</button></div>').join('');
   }catch(e){box.textContent='Could not load exceptions: '+(e.message||e);}
 }
 async function reviewDeliveryLocationException(id){
