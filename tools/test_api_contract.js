@@ -62,7 +62,7 @@ assert.ok(app.includes("action:'route_manage',op:'list'"), "DeliveryApp must loa
 assert.ok(app.includes("Getting location…"), "Mark Done must attempt GPS automatically");
 assert.ok(app.includes("navigator.geolocation.watchPosition"), "GPS capture must continuously watch for better high-accuracy fixes");
 assert.ok(app.includes("bestFix.acc<=10"), "GPS capture should stop early when a 10m or better fix is available");
-assert.ok(app.includes(")),5000)"), "GPS watch must have a short bounded wait");
+assert.ok(app.includes(")),3000)"), "GPS watch must have a short 3-second bounded fallback");
 assert.ok(app.includes("String(x.consumer_no)===String(item.consumer_no)"), "GPS queue sync must remove only the matching consumer capture");
 assert.ok(!app.includes("state.pendingGps.some(g=>String(g.booking_key)===String(item.booking_key)))"), "GPS queue failures must not block delivery completion sync");
 assert.ok(app.includes("Best GPS accuracy was"), "GPS capture must reject poor final fixes instead of saving them as precise");
@@ -86,6 +86,7 @@ assert.ok(dashboard.includes("stopType==='approved_consumer_gps'"), "Office dash
 assert.ok(dashboard.includes("await captureDeliveryGPS(d, 'delivery_after_mark_delivered')"), "Embedded DeliveryApp must capture a fresh GPS observation on every Mark Done");
 assert.ok(dashboard.includes("navigator.geolocation.watchPosition(pos=>"), "Embedded DeliveryApp must use continuous GPS updates");
 assert.ok(dashboard.includes("bestFix.acc<=10)finish()"), "Embedded DeliveryApp must stop early for a 10m or better GPS fix");
+assert.ok(dashboard.includes("timer=setTimeout(()=>finish(bestFix&&bestFix.acc<=30?null:new Error") && dashboard.includes(")),3000)"), "Dashboard GPS fallback must be bounded to 3 seconds");
 assert.ok(dashboard.includes("APP.pendingGps"), "Embedded DeliveryApp must persist and sync offline GPS captures");
 assert.ok(dashboard.includes("async function searchGpsOnlyConsumers()"), "Embedded DeliveryApp must support GPS-only consumer search");
 assert.ok(dashboard.includes("'delivery_manual_lookup'"), "Embedded GPS-only search must use the dedicated manual lookup permission");
