@@ -151,7 +151,7 @@ Cache update commit:
 
 | Area | Latest known version/state | Evidence | Verification status |
 |---|---|---|---|
-| GitHub `main` | `ab7a842a147844942ff3557fc5f71826eedd75ad` (feature release) | GitHub merge commit | Confirmed in repository; handover update follows |
+| GitHub `main` | `2dbaa177963a7f29ccc7e2489f497aa6255aa0da` (customer-link routing; prior map release `ab7a842a147844942ff3557fc5f71826eedd75ad`) | GitHub merge commits | Confirmed in repository; handover update follows |
 | Dashboard source | Build label v36 | `dashboard/index.html` header/title | Source metadata confirmed; full live workflow not tested |
 | `lpg-api` | v46 ACTIVE | Supabase Edge Function listing | Deployment status confirmed |
 | `deliveryapp` Edge Function | v3 ACTIVE | Supabase Edge Function listing | Deployment status confirmed |
@@ -487,6 +487,7 @@ If the handover is not available in the new chat, search the ChatGPT Library for
 - GitHub PR: https://github.com/samruddhigas/locate/pull/3 (merged).
 - GitHub release commit: `2dbaa177963a7f29ccc7e2489f497aa6255aa0da`.
 - Pull-request static validation passed: https://github.com/samruddhigas/locate/actions/runs/45691462557.
+- GitHub Pages deployment workflow #138 completed successfully: https://github.com/samruddhigas/locate/actions/runs/45691532578.
 - No Supabase schema, data, or Edge Function changes.
 
 ### Implemented but not tested
@@ -494,7 +495,7 @@ If the handover is not available in the new chat, search the ChatGPT Library for
 - New WhatsApp link generation from the live Dashboard and customer submission through the canonical root page.
 
 ### Pending
-- Confirm GitHub Pages deployment workflow #138 completes successfully and verify the live root and legacy redirect pages in a real browser/phone.
+- GitHub Pages deployment workflow #138 completed successfully: https://github.com/samruddhigas/locate/actions/runs/45691532578. Verify the live root and legacy redirect pages in a real browser/phone; direct page retrieval was unavailable through the current inspection channel.
 - End-to-end test one existing secure link and one newly generated secure link; verify one-time token use, accurate GPS, pin movement, successful save and office review.
 
 ### Known issues / safeguards
@@ -503,4 +504,4 @@ If the handover is not available in the new chat, search the ChatGPT Library for
 
 ### Handover synchronization
 - GitHub master updated: Yes — canonical customer routing release documented.
-- ChatGPT Library reference updated: Pending synchronization after the GitHub master handover update is committed.
+- ChatGPT Library reference updated: Yes — synchronized to the GitHub master content on 26 November 2026.
