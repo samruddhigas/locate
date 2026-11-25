@@ -1078,6 +1078,16 @@ Deno.serve(async (req) => {
       const pinSavedLat = keepNew ? lat : (Number(existing?.pin_lat) || Number(existing?.lat) || lat);
       const pinSavedLng = keepNew ? lng : (Number(existing?.pin_lng) || Number(existing?.lng) || lng);
       const captureSource = captureMode === "delivery_after_mark_delivered" ? "DELIVERY_BOY_DELIVERY" : captureMode === "delivery_manual_lookup" ? "DELIVERY_BOY_MANUAL_LOOKUP" : "DELIVERY_BOY_INITIAL_MAPPING";
+      const historyRow:any={booking_key:user.role==="delivery"&&captureMode==="delivery_after_mark_delivered"?bookingKey:null,
+        consumer_no:consumerNo,raw_lat:rawLat,raw_lng:rawLng,pin_lat:lat,pin_lng:lng,acc,reading_count:cleanReadings.length,readings:cleanReadings,
+        pin_offset_m:Number(Math.hypot((lat-rawLat)*111320,(lng-rawLng)*111320*Math.cos(rawLat*Math.PI/180)).toFixed(2)),
+        source:captureSource,capture_mode:captureMode,captured_by:user.name,status:"capturing",captured_at:capturedAt};
+      let historySaved=false;
+      if(historyRow.booking_key){
+        const historyWrite=await db.from("lpg_gps_history").upsert(historyRow,{onConflict:"booking_key,consumer_no"});
+        if(historyWrite.error) return Response.json({error:"Delivery GPS could not be saved to history: "+historyWrite.error.message},{status:503,headers:cors});
+        historySaved=true;
+      }
       const row = {
         consumer_no: consumerNo, lat: newLat, lng: newLng, acc: bestAcc,
         raw_lat: rawSavedLat, raw_lng: rawSavedLng, pin_lat: pinSavedLat, pin_lng: pinSavedLng,
@@ -1086,15 +1096,13 @@ Deno.serve(async (req) => {
         source: captureSource, captured_at: capturedAt,
       };
       const { data, error } = await db.from("lpg_gps").upsert(row, { onConflict: "consumer_no" }).select().single();
-      if (error) return Response.json({ error: error.message }, { status: 400, headers: cors });
-      const historyRow:any={booking_key:user.role==="delivery"&&captureMode==="delivery_after_mark_delivered"?bookingKey:null,
-        consumer_no:consumerNo,raw_lat:rawLat,raw_lng:rawLng,pin_lat:lat,pin_lng:lng,acc,reading_count:cleanReadings.length,readings:cleanReadings,
-        pin_offset_m:Number(Math.hypot((lat-rawLat)*111320,(lng-rawLng)*111320*Math.cos(rawLat*Math.PI/180)).toFixed(2)),
-        source:captureSource,capture_mode:captureMode,captured_by:user.name,status:"capturing",captured_at:capturedAt};
-      const historyWrite=historyRow.booking_key
-        ?await db.from("lpg_gps_history").upsert(historyRow,{onConflict:"booking_key,consumer_no"})
-        :await db.from("lpg_gps_history").insert(historyRow);
-      return Response.json({ data, history_saved:!historyWrite.error, history_error:historyWrite.error?.message||null }, { headers: cors });
+      if (error) return Response.json({ error: error.message, history_saved:historySaved }, { status: 503, headers: cors });
+      if(!historySaved){
+        const historyWrite=await db.from("lpg_gps_history").insert(historyRow);
+        if(historyWrite.error) return Response.json({error:"GPS coordinates were stored but capture history needs retry: "+historyWrite.error.message,gps_saved:true},{status:503,headers:cors});
+        historySaved=true;
+      }
+      return Response.json({ data, history_saved:historySaved }, { headers: cors });
     }
 
     // Office review queue for delivery-location deviations and temporary-pin outliers.
