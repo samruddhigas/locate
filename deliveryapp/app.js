@@ -192,7 +192,7 @@ async function captureGps(r,button,captureMode='delivery_initial_mapping',option
   // Reuse the continuously warmed GNSS fix whenever it is recent and sufficiently accurate.
   // This removes the per-delivery cold-start delay without pretending a weak fix is precise.
   const warmFix=(_gpsFix&&Number.isFinite(Number(_gpsFix.lat))&&Number.isFinite(Number(_gpsFix.lng))&&
-   Number(_gpsFix.acc)>0&&Number(_gpsFix.acc)<=30&&Date.now()-Number(_gpsFix.ts||0)<=10000)
+   Number(_gpsFix.acc)>0&&Number(_gpsFix.acc)<=10&&Date.now()-Number(_gpsFix.ts||0)<=10000)
    ?{lat:Number(_gpsFix.lat),lng:Number(_gpsFix.lng),acc:Number(_gpsFix.acc),ts:Number(_gpsFix.ts)}:null;
   const best=warmFix||await new Promise((resolve,reject)=>{
    let watchId=null,deadline=null,bestFix=null,finished=false;
