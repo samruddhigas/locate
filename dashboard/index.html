@@ -6288,8 +6288,9 @@ async function markDone(id) {
   const d = APP.deliveries.find(x => x.id === id);
   if (!d || d.done) return;
   if (!d.consumerNo || !(d.orderNo || d.id)) { toast('⚠️ Booking details incomplete · refresh from office','#b45309'); return; }
-  // One action: try to capture the best GPS fix, but never block a real delivery if GPS is unavailable.
-  if (!d.gpsAt) await captureDeliveryGPS(d, 'delivery_after_mark_delivered');
+  // Every delivery needs a fresh visit reading. Never reuse an earlier mapping pin
+  // as proof of where today's cylinder was handed over.
+  await captureDeliveryGPS(d, 'delivery_after_mark_delivered');
   const record={booking_key:String(d.orderNo||d.id||''),consumer_no:String(d.consumerNo||''),qty:Math.max(1,Number(d.qty)||1),completed_at:new Date().toISOString()};
   try{
     if(!navigator.onLine)throw new Error('OFFLINE_QUEUE');
@@ -6298,7 +6299,10 @@ async function markDone(id) {
     d.done=true;d.serverCompleted=true;d.syncPending=false;
     d.doneAt=new Date(record.completed_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
     APP.pendingCompletions=(APP.pendingCompletions||[]).filter(x=>x.booking_key!==record.booking_key);
-    save();toast(d.gpsAt==='queued'?'✅ Delivered · GPS waiting to sync':'✅ Delivered · central record saved');renderAll();
+    save();
+    const check=result.location_check||{};
+    const locationNote=check.result==='deviation'?' · GPS DEVIATION '+Math.round(check.distance_m||0)+'m (office review)':check.result==='nearby_warning'?' · GPS warning '+Math.round(check.distance_m||0)+'m':check.result==='temporary_approved'?' · temporary location verified (3 visits)':check.result==='provisional'?' · location provisional (2 visits)':'';
+    toast((d.gpsAt==='queued'?'✅ Delivered · GPS waiting to sync':'✅ Delivered · central record saved')+locationNote,check.result==='deviation'?'#b45309':undefined);renderAll();
   }catch(e){
     if(e.message==='OFFLINE_QUEUE'||!navigator.onLine){
       APP.pendingCompletions=APP.pendingCompletions||[];
