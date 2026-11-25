@@ -6428,12 +6428,19 @@ function setDeliveryGpsLayer(which){if(!_deliveryGpsMap)return;if(_deliveryGpsLa
 async function saveDeliveryGpsPin(){
   if(!_deliveryGpsCurrent||!_deliveryGpsBest||!_deliveryGpsMarker)return;
   const btn=document.getElementById('deliveryGpsPinSave');btn.disabled=true;btn.textContent='Saving…';const p=_deliveryGpsMarker.getLatLng(),d=_deliveryGpsCurrent,best=_deliveryGpsBest;
+  const payload={booking_key:String(d.orderNo||d.id||''),consumer_no:String(d.consumerNo),raw_lat:best.lat,raw_lng:best.lng,pin_lat:p.lat,pin_lng:p.lng,lat:p.lat,lng:p.lng,acc:best.acc,readings:_deliveryGpsSamples.slice(-5),capture_mode:_deliveryGpsCaptureMode};
   try{
-    await newProjectApiPost({action:'gps_capture',consumer_no:d.consumerNo,raw_lat:best.lat,raw_lng:best.lng,pin_lat:p.lat,pin_lng:p.lng,lat:p.lat,lng:p.lng,acc:best.acc,readings:_deliveryGpsSamples.slice(-5),capture_mode:_deliveryGpsCaptureMode},DELIVERY_SESSION_TOKEN);
+    await newProjectApiPost({action:'gps_capture',...payload},DELIVERY_SESSION_TOKEN);
     d.lat=p.lat;d.lng=p.lng;d.gpsAt=new Date().toISOString();d.gpsAccuracy=best.acc;save();updateStats();document.getElementById('deliveryGpsPinOverlay').classList.remove('open');toast('📍 Entrance location saved · लोकेशन नोंदविले');
     const done=_deliveryGpsPinResolve;_deliveryGpsPinResolve=null;if(done)done(true);
-  }catch(e){toast('⚠️ GPS save failed · '+e.message,'#b45309');}
-  finally{btn.disabled=false;btn.textContent='Confirm & Save';}
+  }catch(e){
+    if(!navigator.onLine||/failed to fetch|networkerror|load failed/i.test(e.message||'')){
+      APP.pendingGps=Array.isArray(APP.pendingGps)?APP.pendingGps:[];
+      if(!APP.pendingGps.some(x=>String(x.booking_key||'')===payload.booking_key&&String(x.consumer_no)===payload.consumer_no))APP.pendingGps.push(payload);
+      d.lat=p.lat;d.lng=p.lng;d.gpsAt='queued';d.gpsAccuracy=best.acc;save();document.getElementById('deliveryGpsPinOverlay').classList.remove('open');toast('📍 Entrance pin saved on phone · waiting to sync · ±'+Math.round(best.acc)+' m','#b45309');
+      const done=_deliveryGpsPinResolve;_deliveryGpsPinResolve=null;if(done)done(false);
+    }else toast('⚠️ GPS save failed · '+e.message,'#b45309');
+  }finally{btn.disabled=false;btn.textContent='Confirm & Save';}
 }
 function cancelDeliveryGpsPin(){
   document.getElementById('deliveryGpsPinOverlay').classList.remove('open');
