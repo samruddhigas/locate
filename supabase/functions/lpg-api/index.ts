@@ -1121,6 +1121,16 @@ Deno.serve(async (req) => {
           rows.push(...(data||[]));
           if (!data || data.length<1000) break;
         }
+        const {data:temporaryRows,error:temporaryError}=await db.from("lpg_gps_temporary")
+          .select("consumer_no,lat,lng,best_accuracy_m,confirmation_count,status,last_delivery_man,last_confirmed_at")
+          .eq("status","temporary_approved");
+        if(temporaryError) return Response.json({error:"Could not load temporary verified GPS pins: "+temporaryError.message},{status:503,headers:cors});
+        (temporaryRows||[]).forEach((g:any)=>rows.push({
+          consumer_no:g.consumer_no,lat:g.lat,lng:g.lng,pin_lat:g.lat,pin_lng:g.lng,
+          acc:g.best_accuracy_m,count:g.confirmation_count,status:"temporary_approved",
+          dm_name:g.last_delivery_man,source:"temporary_auto_approved",
+          captured_at:g.last_confirmed_at,capture_mode:"delivery_repeat_verification"
+        }));
         return Response.json({ data:rows }, { headers:cors });
       }
       if (op === "count") {
