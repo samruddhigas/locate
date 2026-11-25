@@ -3108,7 +3108,8 @@ const DB = {
 const STATE = { masters:[], delivered:[], pending:[], remarks:{}, sortState:{},
   deliveredFY: {},      // { '2425':[], '2526':[], '2627':[] }
   currentFYKey: (()=>{ const n=new Date(),m=n.getMonth(),y=n.getFullYear(),s=m>=3?y:y-1; return String(s).slice(-2)+String(s+1).slice(-2); })(), // auto-computed Indian FY
-  consumerGPS: {},      // { consumerNo: {lat,lng,acc,capturedAt,source} }
+  consumerGPS: {},      // Permanent office-approved GPS pins only
+  temporaryConsumerGPS: {}, // Three-delivery verified temporary pins; never overwrite permanent pins
   gpsApprovals: {}      // { consumerNo: pending approval from delivery man }
 };
 let _selectedFY = (()=>{ const n=new Date(),m=n.getMonth(),y=n.getFullYear(),s=m>=3?y:y-1; return String(s).slice(-2)+String(s+1).slice(-2); })(); // current FY for viewing
@@ -8688,8 +8689,9 @@ async function buildRouteOptimizer() {
     const dm = p.deliveryMan || '(Unassigned)';
     if (!byDM.has(dm)) byDM.set(dm, []);
     if (!fallbackByDM.has(dm)) fallbackByDM.set(dm, new Map());
-    const gps = STATE.consumerGPS[p.consumerNo];
-    const gpsIsApproved = gps && (gps.status === 'approved' || gps.source === 'approved' || gps.source === 'staff_pin') &&
+    const gps = STATE.consumerGPS[p.consumerNo] || STATE.temporaryConsumerGPS?.[p.consumerNo];
+    const isTemporary = gps?.status === 'temporary_approved' || gps?.source === 'temporary_auto_approved';
+    const gpsIsApproved = gps && (isTemporary || gps.status === 'approved' || gps.source === 'approved' || gps.source === 'staff_pin') &&
       Number.isFinite(Number(gps.lat)) && Number(gps.lat) >= -90 && Number(gps.lat) <= 90 &&
       Number.isFinite(Number(gps.lng)) && Number(gps.lng) >= -180 && Number(gps.lng) <= 180;
     if (gpsIsApproved) {
@@ -8698,7 +8700,7 @@ async function buildRouteOptimizer() {
         consumers:[p],
         lat:Number(gps.lat), lng:Number(gps.lng),
         coords:{lat:Number(gps.lat),lng:Number(gps.lng)},
-        stopType:'approved_consumer_gps'
+        stopType:isTemporary ? 'temporary_consumer_gps' : 'approved_consumer_gps'
       });
       gpsStopCount++;
       return;
@@ -8824,14 +8826,14 @@ async function publishSelectedRoute() {
   if(!dm){statusEl.textContent='⚠️ Select one delivery boy before publishing.';return;}
   const route=_routeData.find(r=>r.dm===dm);
   if(!route){statusEl.textContent='⚠️ Optimize routes first.';return;}
-  const stops=route.optimized.filter(stop=>stop.stopType==='approved_consumer_gps').map((stop,index)=>{
+  const stops=route.optimized.filter(stop=>stop.stopType==='approved_consumer_gps'||stop.stopType==='temporary_consumer_gps').map((stop,index)=>{
     const c=stop.consumers[0]||{};
     return {booking_key:String(c.orderNo||c.id||''),consumer_no:String(c.consumerNo||''),stop_order:index+1};
   }).filter(x=>x.booking_key&&x.consumer_no);
-  if(!stops.length){statusEl.textContent='⚠️ No approved consumer GPS stops are available for this delivery boy. Area estimates cannot be published as exact customer stops.';return;}
+  if(!stops.length){statusEl.textContent='⚠️ No office-approved or 3-delivery temporary GPS stops are available for this delivery boy. Area estimates cannot be published as exact customer stops.';return;}
   if(!AUTH?.token||!['admin','staff'].includes(AUTH.role)){statusEl.textContent='⚠️ Office admin/staff login is required to publish routes.';return;}
   const now=new Date(),routeDate=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
-  if(!confirm('Publish '+stops.length+' approved GPS stops for '+dm+' on '+routeDate+'? This replaces the previous published route for this delivery boy and date.'))return;
+  if(!confirm('Publish '+stops.length+' verified GPS stops (office-approved or 3 consistent deliveries) for '+dm+' on '+routeDate+'? This replaces the previous published route for this delivery boy and date.'))return;
   statusEl.textContent='⏳ Publishing and validating assigned bookings…';
   try{
     const result=await newProjectApiPost({action:'route_manage',op:'publish',route_date:routeDate,delivery_man:dm,stops},AUTH.token);
@@ -8925,10 +8927,10 @@ DB.syncGPS = async function() {
   try {
     const result = await gpsApi('list');
     const data = Array.isArray(result.data) ? result.data : [];
-    let autoApproved=0, queued=0;
+    let autoApproved=0, queued=0, temporaryVerified=0;
     const now = new Date().toISOString();
     const localOnly = Object.fromEntries(Object.entries(STATE.gpsApprovals||{}).filter(([,r])=>r && (r.localOnly===true || (r.legacyImport===true && r.cloudSynced!==true))));
-    const approvedNext={}, pendingNext={};
+    const approvedNext={}, pendingNext={}, temporaryNext={};
     data.forEach(r => {
       const cno=String(r.consumer_no||'').trim(); if(!cno) return;
       const rec={lat:Number(r.lat),lng:Number(r.lng),acc:Number(r.acc)||99,count:Number(r.count)||1,
@@ -8936,7 +8938,9 @@ DB.syncGPS = async function() {
         rawLat:r.raw_lat??null,rawLng:r.raw_lng??null,pinLat:r.pin_lat??r.lat,pinLng:r.pin_lng??r.lng,captureMode:r.capture_mode||'',
         consumerName:r.consumer_name||lookupConsumerName(cno),area:r.area||'',dmName:r.dm_name||'',cloudSynced:true};
       if (rec.status==='rejected') return; // Rejected locations stay in history but must not re-enter the approval queue.
-      if (rec.status==='approved' || rec.source==='approved' || rec.source==='staff_pin') {
+      if (rec.status==='temporary_approved' || rec.source==='temporary_auto_approved') {
+        temporaryNext[cno]=rec; temporaryVerified++;
+      } else if (rec.status==='approved' || rec.source==='approved' || rec.source==='staff_pin') {
         approvedNext[cno]=rec; autoApproved++;
       } else { pendingNext[cno]={...rec,submittedAt:rec.capturedAt,importedAt:now}; queued++; }
     });
@@ -8944,13 +8948,14 @@ DB.syncGPS = async function() {
     // explicitly tagged local-only or older unverified legacy imports that may not have uploaded, so a later
     // cloud sync cannot silently resurrect a rejected/deleted location locally.
     Object.entries(localOnly).forEach(([cno,rec])=>{
-      if(!approvedNext[cno]&&!pendingNext[cno]) pendingNext[cno]=rec;
+      if(!approvedNext[cno]&&!pendingNext[cno]&&!temporaryNext[cno]) pendingNext[cno]=rec;
     });
     STATE.consumerGPS=approvedNext;
+    STATE.temporaryConsumerGPS=temporaryNext;
     STATE.gpsApprovals=pendingNext;
     try { localStorage.setItem('lpg_gps',JSON.stringify(STATE.consumerGPS)); } catch(e){}
     saveGpsApprovals(); updateApprovalBadge(); renderApprovalStats(); updateGPSCoverage();
-    return {autoApproved,queued};
+    return {autoApproved,queued,temporaryVerified};
   } catch(e) { console.warn('GPS sync failed:',e); return {autoApproved:0,queued:0,error:e.message}; }
 };
 
@@ -8965,7 +8970,7 @@ function startGPSAutoPoll() {
     if (!DB._client || !DB._online) return;
     const result = await DB.syncGPS();
     // Update badge and stats if anything changed
-    if (result && (result.autoApproved > 0 || result.queued > 0)) {
+    if (result && (result.autoApproved > 0 || result.queued > 0 || result.temporaryVerified > 0)) {
       updateApprovalBadge();
       renderApprovalStats();
       // If approvals tab is open, refresh its view
@@ -8992,7 +8997,7 @@ DB.init = function(url, key) {
 function updateGPSCoverage() {
   const pending = STATE.pending;
   if (!pending.length) return;
-  const withGPS = pending.filter(p => STATE.consumerGPS[p.consumerNo]).length;
+  const withGPS = pending.filter(p => STATE.consumerGPS[p.consumerNo] || STATE.temporaryConsumerGPS?.[p.consumerNo]).length;
   const pct = Math.round(withGPS / pending.length * 100);
   const bar  = document.getElementById('gpsCoverageBar');
   const txt  = document.getElementById('gpsCoverageText');
@@ -9002,7 +9007,7 @@ function updateGPSCoverage() {
     txt.textContent = pct + '%';
     txt.style.color = pct >= 75 ? 'var(--green)' : pct >= 40 ? 'var(--yellow)' : 'var(--text2)';
   }
-  if (det) det.textContent = `${withGPS} of ${pending.length} pending consumers have GPS · ${Object.keys(STATE.consumerGPS).length} total stored`;
+  if (det) det.textContent = `${withGPS} of ${pending.length} pending consumers have GPS · ${Object.keys(STATE.consumerGPS).length} permanent + ${Object.keys(STATE.temporaryConsumerGPS||{}).length} temporary verified`;
 }
 
 // Handle GPS JSON file import from delivery app
