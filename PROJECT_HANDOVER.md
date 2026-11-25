@@ -507,7 +507,7 @@ If the Library copy is unavailable, search for the exact filename. Do not infer 
 
 ---
 
-## 16. 2026-11-26 — Repeated-delivery location verification, deviations, GPS responsiveness and repository sync
+## 18. 26 November 2026 — Repeated-delivery location verification and deviation exceptions
 
 **Code baseline for this update:** `9c0d114149783393c7ee7367a5d799ceb12d57b6` (the handover commit follows).  
 **Production backend:** `lpg-api` v49 ACTIVE; `deliveryapp` v3 ACTIVE.  
@@ -610,7 +610,7 @@ No production customer master, delivered-cylinder, pending-booking, or completio
 - Never mark Android field testing as complete without a real device test and recorded result.
 
 
-## 18. 26 November 2026 — GPS responsiveness, production verification and repository synchronization
+## 19. 26 November 2026 — GPS responsiveness, production verification and repository synchronization
 
 ### Source changes and deployment
 - Canonical source: samruddhigas/locate main; latest source commit before this handover update: d861c0b88e456d1e39a23f0ea838a2a670b90589.
