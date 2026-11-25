@@ -404,7 +404,7 @@ If the Library copy is unavailable, search for the exact filename. Do not infer 
 - **Canonical repository:** samruddhigas/locate, branch main; latest GPS responsiveness source SHA: d861c0b88e456d1e39a23f0ea838a2a670b90589 (later documentation commits supersede it).
 - **Private mirror:** samruddhigas/SAMRUDDHI-DELIVERY-APP; automated 5-minute sync workflow installed, with manual source copy made. Check the latest sync workflow and validation runs before claiming the mirror is current.
 - **Production Supabase:** only uggqsvgxjhvdfkddqzyh, ACTIVE_HEALTHY.
-- **Edge Functions:** lpg-api v51 ACTIVE; deliveryapp v3 ACTIVE.
+- **Edge Functions:** lpg-api v52 ACTIVE; deliveryapp v3 ACTIVE.
 - **Dashboard:** build label v36. Delivery Mark Done reuses a fresh high-quality warm GPS fix or watches for at most 3 seconds for a better fix, then proceeds without falsely claiming GPS capture if no acceptable fix is available.
 - **Standalone DeliveryApp:** service-worker cache samruddhi-delivery-v17; fresh warm fix at or better than 10 m is reused immediately, otherwise a short 3-second improvement window is used. Actual reported accuracy is retained.
 - **Customer location page:** root index.html is canonical; it accepts a 10 m fix immediately or the best fresh fix up to 30 m after a 3-second bounded window, then provides road/satellite layers and draggable/tap-to-place entrance pin.
@@ -412,7 +412,7 @@ If the Library copy is unavailable, search for the exact filename. Do not infer 
 - **Temporary-location verification:** first valid visit = candidate; second consistent visit on a different India-local day = provisional; third consistent visit on a different day = temporary-approved and eligible for route optimization. Same-day repeat bookings do not increase the count. Temporary pins never overwrite office-approved permanent pins.
 - **Deviation handling:** against an office-approved pin, up to 30 m is matched, 30–50 m creates a warning exception, and over 50 m creates a deviation exception. More than 20 m from a temporary cluster creates an outlier exception. Office staff can review/resolve exceptions with a note.
 - **Database baseline checked:** 10,988 masters; 8,284 delivered rows; 254 pending rows. GPS and location-observation tables were empty at the previous read-only count; synthetic verification tests were rolled back and retained no test records.
-- **Backend verification:** lpg-api v51 ACTIVE; production function deployed from checked-in source. Synthetic SQL transaction tests confirmed candidate → provisional → temporary_approved, same-day repeat deduplication, and 111.19 m deviation exception creation.
+- **Backend verification:** lpg-api v52 ACTIVE; production function deployed from checked-in source. Synthetic SQL transaction tests confirmed candidate → provisional → temporary_approved, same-day repeat deduplication, and 111.19 m deviation exception creation.
 - **CI:** public static validation passed for the 26 November GPS responsiveness source commits. Check GitHub Pages deployment for the latest source commit separately.
 - **Not verified:** actual GPS capture, tile rendering, touch dragging, offline queue recovery, or WhatsApp customer capture on a physical Android phone. No physical handset was attached to this session.
 - **Data safety:** no production consumer, pending, delivered, completion or approved GPS rows were altered by the synthetic SQL tests. Do not run test inserts outside rollback transactions.
@@ -664,3 +664,55 @@ No production customer master, delivered-cylinder, pending-booking, or completio
 - Section 13 has been refreshed with the autonomous continuation prompt and source-of-truth rules.
 - Section 14 has been refreshed to this baseline.
 - This GitHub file remains the master. Update the ChatGPT Library reference from the exact same content after this commit.
+
+
+## 20. 26 November 2026 — Offline GPS queue durability and final mirror verification
+
+### Offline delivery GPS fix
+- Found a real queue defect: delayed delivery GPS sync could be rejected after five minutes because the API filtered client readings by server-now rather than preserving the original visit time. This could leave an offline GPS item queued and prevent it from being associated with its delivery completion.
+- Added lpg_gps_history.booking_key and a unique (booking_key, consumer_no) index. The full unique index is intentionally non-partial so PostgREST upsert(onConflict: booking_key,consumer_no) can infer it; NULL booking keys remain distinct in PostgreSQL.
+- For authenticated delivery users, gps_capture now accepts valid visit readings up to 48 hours old (the completion queue's existing window), while office captures remain limited to 5 minutes. Future timestamps more than 5 minutes ahead remain rejected.
+- The API now stores the original device-fix timestamp as captured_at rather than replacing it with sync time. Mark Done completion lookup can therefore match a queued GPS reading to the actual visit time.
+- Delivery-after-Mark-Done captures require a real assigned booking key. Duplicate retries check the booking/consumer history key and do not create another visit or increment GPS evidence twice.
+- Delivery GPS history is written idempotently before updating the non-approved GPS summary, preventing a lost history write from being reported as a successful delivery GPS capture.
+- Added regression assertions for the 48-hour window, original timestamp preservation, and booking-key idempotency.
+
+### Production deployment and verification
+- Applied migration 20261126110000_add_delivery_gps_offline_idempotency.sql and follow-up 20261126112000_fix_gps_history_upsert_index.sql to the active project uggqsvgxjhvdfkddqzyh.
+- lpg-api deployed as version 52 ACTIVE. The deployed Edge Function source was fetched and compared byte-for-byte with GitHub main; it matches.
+- Rollback-only SQL test performed two upserts for the same booking/consumer and confirmed exactly one history row. The test row was rolled back.
+- Production counts remained: lpg_masters 10,988; lpg_delivered 8,284; lpg_pending 254; lpg_gps 0; lpg_gps_history 0; lpg_delivery_completions 4; lpg_delivery_location_observations 0; lpg_delivery_location_exceptions 0.
+- No production consumer, delivery, completion, or GPS rows were changed by the verification test.
+
+### Repository synchronization and CI
+- Updated the private mirror workflow to run on every push to main, poll the canonical repository every 5 minutes, and mirror the new offline-idempotency migration as well as the existing frontend/backend files.
+- Auto-sync workflow run 45702307289 completed successfully; private DeliveryApp validation run 45702307120 completed successfully.
+- Verified matching Git blob hashes between public and private repositories for standalone app.js, index.html, app.css, sw.js, lpg-api/index.ts, and the new migration 20261126112000_fix_gps_history_upsert_index.sql.
+- Public static validation run 45702303300 passed. GitHub Pages deployment run 45702302903 was still in progress at the time of this handover update; verify its final conclusion before declaring the latest Pages release deployed.
+
+### Status categories
+**Completed and verified**
+- Repeated-delivery candidate/provisional/temporary approval, same-day deduplication and deviation exception creation passed rollback-only SQL tests.
+- Offline GPS schema/index migration applied; idempotent upsert behavior passed rollback-only SQL test.
+- lpg-api v52 is ACTIVE and matches GitHub source exactly.
+- Public static validation passed; private sync and private CI passed; all mirrored file hashes checked match.
+- GPS capture wait is bounded to 3 seconds and reuses a warm <=10 m fix immediately.
+
+**Implemented but not tested end-to-end**
+- Delayed offline GPS submission through a real Android device/session and subsequent association with a real delivery completion.
+- Real authenticated exception resolution and route publication.
+
+**Pending**
+- Latest GitHub Pages deployment final status.
+- Physical Android tests on at least two phones, including real GNSS accuracy, map tiles/touch, offline queue and customer WhatsApp capture. No physical handset was attached to this session.
+- Real assigned-booking test of temporary pin route publication.
+
+**Known limitations**
+- The API accepts a delayed delivery GPS reading for up to 48 hours, but the device must preserve its original timestamp and the booking must still pass assignment/ownership checks.
+- No browser app can guarantee 7 m accuracy at every site.
+- Google Maps tiles are not used; the map uses CARTO/OSM and Esri imagery, with Google Maps navigation links.
+- Dashboard-embedded and standalone DeliveryApp code remain separate implementations; the private repo mirrors standalone files, while static validation guards embedded code.
+
+### Handover synchronization
+- GitHub master updated after the source, migration, deployment and test changes.
+- ChatGPT Library reference must be refreshed from this final master content after the deployment status is confirmed.
