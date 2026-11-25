@@ -126,38 +126,40 @@ $('closeDialog').onclick=()=>{if(state.pinPickerCancel)state.pinPickerCancel();$
 function chooseGpsPin(r,best){
  if(!window.L)return Promise.resolve(null);
  return new Promise(resolve=>{
-  const panel=$('stopDetail').querySelector('.gps-panel');
-  const wrap=document.createElement('div');wrap.className='pin-picker';
-  const heading=document.createElement('b');heading.textContent='Confirm the customer’s main entrance';
-  const help=document.createElement('p');help.textContent='GPS fix ±'+best.acc.toFixed(1)+' m. Drag the pin or tap the map to place it on the main gate.';
-  const controls=document.createElement('div');controls.className='pin-map-controls';
-  const streetBtn=document.createElement('button');streetBtn.type='button';streetBtn.className='secondary';streetBtn.textContent='Road map';
-  const satelliteBtn=document.createElement('button');satelliteBtn.type='button';satelliteBtn.className='secondary';satelliteBtn.textContent='Satellite';
-  const mapEl=document.createElement('div');mapEl.className='pin-map';mapEl.setAttribute('aria-label','Map to select customer entrance');
-  const coords=document.createElement('div');coords.className='pin-map-coords';
-  const actions=document.createElement('div');actions.className='pin-map-actions';
-  const cancel=document.createElement('button');cancel.type='button';cancel.className='secondary';cancel.textContent='Cancel';
-  const confirm=document.createElement('button');confirm.type='button';confirm.className='primary';confirm.textContent='Confirm entrance pin';
-  controls.append(streetBtn,satelliteBtn);actions.append(cancel,confirm);wrap.append(heading,help,controls,mapEl,coords,actions);panel.append(wrap);
+  const dlg=$('pinPickerDialog'),mapEl=$('pinPickerMap');
+  $('pinPickerConsumer').textContent=(r.name||'Customer')+' · Consumer '+r.consumer;
+  $('pinPickerAccuracy').textContent='Device GPS accuracy: ±'+best.acc.toFixed(1)+' metres. Drag the pin or tap the map to select the actual main entrance.';
   let map=null,marker=null,street=null,satellite=null,layer='street',finished=false;
-  const finish=value=>{if(finished)return;finished=true;state.pinPickerCancel=null;if(map){map.remove();map=null;}wrap.remove();resolve(value);};
+  const finish=value=>{
+   if(finished)return;finished=true;state.pinPickerCancel=null;
+   dlg.removeEventListener('cancel',onCancel);
+   if(map){map.remove();map=null;}
+   if(dlg.open)dlg.close();
+   resolve(value);
+  };
+  const onCancel=()=>finish(null);
   state.pinPickerCancel=()=>finish(null);
+  dlg.addEventListener('cancel',onCancel,{once:true});
   try{
+   dlg.showModal();
    map=L.map(mapEl,{zoomControl:true,scrollWheelZoom:false}).setView([best.lat,best.lng],19);
    street=L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',{maxZoom:22,attribution:'© OpenStreetMap contributors © CARTO'});
    satellite=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Tiles © Esri'});
    street.addTo(map);marker=L.marker([best.lat,best.lng],{draggable:true}).addTo(map);
-   const update=()=>{const p=marker.getLatLng(),offset=distance({lat:best.lat,lng:best.lng},{lat:p.lat,lng:p.lng});coords.textContent='Entrance pin offset: '+Math.round(offset)+' m from GPS position';confirm.disabled=offset>500;coords.classList.toggle('pin-too-far',offset>500);if(offset>500)coords.textContent+=' · Move within 500 m';};
+   const update=()=>{
+    const p=marker.getLatLng(),offset=distance({lat:best.lat,lng:best.lng},{lat:p.lat,lng:p.lng});
+    $('pinPickerCoords').textContent='Entrance pin offset: '+Math.round(offset)+' m from GPS'+(offset>500?' · Move within 500 m':'');
+    $('pinPickerCoords').classList.toggle('pin-too-far',offset>500);$('pinPickerConfirm').disabled=offset>500;
+   };
    marker.on('dragend',update);map.on('click',e=>{marker.setLatLng(e.latlng);update();});
-   streetBtn.onclick=()=>{if(layer!=='street'){map.removeLayer(satellite);street.addTo(map);layer='street';}};
-   satelliteBtn.onclick=()=>{if(layer!=='satellite'){map.removeLayer(street);satellite.addTo(map);layer='satellite';}};
-   cancel.onclick=()=>finish(null);
-   confirm.onclick=()=>{const p=marker.getLatLng();finish({lat:p.lat,lng:p.lng});};
+   $('pinPickerStreet').onclick=()=>{if(layer!=='street'){map.removeLayer(satellite);street.addTo(map);layer='street';}};
+   $('pinPickerSatellite').onclick=()=>{if(layer!=='satellite'){map.removeLayer(street);satellite.addTo(map);layer='satellite';}};
+   $('pinPickerClose').onclick=()=>finish(null);$('pinPickerCancel').onclick=()=>finish(null);
+   $('pinPickerConfirm').onclick=()=>{const p=marker.getLatLng();finish({lat:p.lat,lng:p.lng});};
    update();setTimeout(()=>map&&map.invalidateSize(),180);
   }catch(e){finish(null);}
  });
 }
-
 async function captureGps(r,button,captureMode='delivery_initial_mapping',options={}){
  if(!navigator.geolocation){const msg='Location permission or GPS is unavailable on this phone.';if(!options.silent)alert(msg);return {saved:false,message:msg}}
  const detail=$('stopDetail');
@@ -194,13 +196,10 @@ async function captureGps(r,button,captureMode='delivery_initial_mapping',option
   if(!best||best.acc>30)throw new Error('Best GPS accuracy was '+Math.round(best?.acc||0)+' m. Need 30 m or better. Keep Location enabled and retry in a more open place.');
   const accuracy=best.acc;
   let pin={lat:best.lat,lng:best.lng};
-  // Manual/GPS-only captures pause for an entrance-pin confirmation. The fast Mark Done
-  // path remains automatic so delivery work is never blocked by map interaction.
-  if(!options.silent){
-   const selected=await chooseGpsPin(r,best);
-   if(!selected){if(status)status.textContent='Map selection cancelled. No location was submitted.';button.textContent='Capture GPS again';return {saved:false,message:'Pin selection cancelled.'};}
-   pin=selected;
-  }
+  // Every GPS capture pauses for an entrance-pin confirmation. Silent mode only suppresses alerts.
+  const selected=await chooseGpsPin(r,best);
+  if(!selected){if(status)status.textContent='Map selection cancelled. No location was submitted.';button.textContent='Capture GPS again';return {saved:false,message:'Pin selection cancelled.'};}
+  pin=selected;
   const payload={booking_key:String(r.booking||''),consumer_no:r.consumer,raw_lat:best.lat,raw_lng:best.lng,pin_lat:pin.lat,pin_lng:pin.lng,lat:pin.lat,lng:pin.lng,acc:accuracy,
    // Keep the device GPS fix separate from the entrance pin selected on the map.
    readings:[{lat:best.lat,lng:best.lng,acc:accuracy,ts:best.ts}],capture_mode:captureMode};
