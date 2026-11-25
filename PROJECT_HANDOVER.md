@@ -392,31 +392,30 @@ Keep the latest deployment table current. Never delete older release entries; ad
 
 Start a new chat and say:
 
-> Continue the Samruddhi Gas Agency LPG Distribution System project. First read the latest `SAMRUDDHI_LPG_PROJECT_HANDOVER.md` reference copy from my ChatGPT Library and inspect the GitHub master at `https://github.com/samruddhigas/locate/blob/main/PROJECT_HANDOVER.md`. Then inspect the current GitHub source and live Supabase project `uggqsvgxjhvdfkddqzyh` before changing anything. Treat the GitHub handover as the master and keep the ChatGPT Library reference copy synchronized after every fix, deployment, or confirmed feature. Preserve all verified working features and production data. Do not repeat completed work, do not ask me to perform technical steps, and do not claim success without actual verification. Continue with the highest-priority pending items and report each item under Completed and verified, Implemented but not tested, Pending, or Known issues.
+> Continue the Samruddhi Gas Agency LPG Distribution System. First read the latest SAMRUDDHI_LPG_PROJECT_HANDOVER.md from my ChatGPT Library and compare it with the GitHub master at https://github.com/samruddhigas/locate/blob/main/PROJECT_HANDOVER.md. Inspect the latest main source, GitHub Actions runs/deployments, both repositories, and only the active Supabase project uggqsvgxjhvdfkddqzyh. Use the latest dated handover section as the baseline. Continue autonomously: fix, test, deploy, verify and document without asking me to perform technical steps. Preserve production data and approved customer pins. Never claim physical Android testing unless a real handset test has actually been performed. Keep the GitHub master and ChatGPT Library reference synchronized after every meaningful change. Report Completed and verified, Implemented but not tested, Pending, and Known issues separately.
 
-If the handover is not available in the new chat, search the ChatGPT Library for the exact filename above. Do not guess the current state from an old conversation.
+If the Library copy is unavailable, search for the exact filename. Do not infer current status from older chat messages or the private repository's status document. The GitHub PROJECT_HANDOVER.md is the master record; the private SAMRUDDHI-DELIVERY-APP repository is an automated mirror, not a second source of truth.
 
 ---
 
 ## 14. Current handover baseline — concise snapshot
 
 **Current checked state: 26 November 2026**
-- **Project:** Samruddhi Gas Agency LPG Distribution System.
-- **GitHub master repository:** `samruddhigas/locate`, branch `main`.
-- **Feature release commits:** `ab7a842a147844942ff3557fc5f71826eedd75ad` (map upgrade) and `2dbaa177963a7f29ccc7e2489f497aa6255aa0da` (customer-link routing); the handover synchronization commit follows.
-- **Production Supabase:** `uggqsvgxjhvdfkddqzyh`, status `ACTIVE_HEALTHY`.
-- **Edge Functions:** `lpg-api` v46 ACTIVE; `deliveryapp` v3 ACTIVE.
-- **Dashboard source:** build label v36; latest delivery GPS map wiring is in the 26 November feature release.
-- **DeliveryApp cache:** `samruddhi-delivery-v16`.
-- **Consumer location page:** root `index.html` is the canonical capture page with road/satellite switching, draggable pin and tap-to-place. Dashboard generates new links to this root page; legacy `/consumer-location/` links redirect to root while preserving token query/hash.
-- **DeliveryApp:** standalone PWA and Dashboard-generated app now present a map confirmation step for GPS capture, with draggable/tap-to-place pin, road/satellite layers, 500 m guard, and separate raw GPS / selected entrance coordinates.
-- **lpg-api source:** GitHub `supabase/functions/lpg-api/index.ts` has been reconciled to the active deployed v46 source. No Edge Function redeployment was performed.
-- **Live database counts:** 10,988 masters; 8,284 delivered rows; 254 pending rows; 0 GPS rows; 0 GPS history rows; 0 active GPS link rows; 0 published routes; 0 route stops.
-- **Verified:** GitHub Actions static validation passed on the merged feature release; production project health, Edge Function versions, database counts, and deployed-vs-GitHub `lpg-api` source match checked.
-- **Implemented but not tested:** real Android map interaction, tile rendering on delivery/customer phones, GPS submission with adjusted pins, installed PWA cache update, and office GPS review.
-- **Pending:** inspect live GitHub Pages content and map rendering in a real browser/phone; perform real-device/end-to-end acceptance; reconcile the live-only migration `20261124101003_allow_delivery_completion_with_optional_gps` with a checked-in migration source.
-- **Legacy route:** `consumer-location/index.html` is now a compatibility redirect to the canonical root page; existing secure links retain their query parameters.
-- **Copy policy:** GitHub `PROJECT_HANDOVER.md` remains master; update ChatGPT Library `SAMRUDDHI_LPG_PROJECT_HANDOVER.md` from the same final content after every meaningful change.
+- **Canonical repository:** samruddhigas/locate, branch main; latest GPS responsiveness source SHA: d861c0b88e456d1e39a23f0ea838a2a670b90589 (later documentation commits supersede it).
+- **Private mirror:** samruddhigas/SAMRUDDHI-DELIVERY-APP; automated 5-minute sync workflow installed, with manual source copy made. Check the latest sync workflow and validation runs before claiming the mirror is current.
+- **Production Supabase:** only uggqsvgxjhvdfkddqzyh, ACTIVE_HEALTHY.
+- **Edge Functions:** lpg-api v51 ACTIVE; deliveryapp v3 ACTIVE.
+- **Dashboard:** build label v36. Delivery Mark Done reuses a fresh high-quality warm GPS fix or watches for at most 3 seconds for a better fix, then proceeds without falsely claiming GPS capture if no acceptable fix is available.
+- **Standalone DeliveryApp:** service-worker cache samruddhi-delivery-v17; fresh warm fix at or better than 10 m is reused immediately, otherwise a short 3-second improvement window is used. Actual reported accuracy is retained.
+- **Customer location page:** root index.html is canonical; it accepts a 10 m fix immediately or the best fresh fix up to 30 m after a 3-second bounded window, then provides road/satellite layers and draggable/tap-to-place entrance pin.
+- **Maps:** CARTO/OpenStreetMap road tiles and Esri satellite tiles; Google Maps links are used for navigation. These are not Google Maps JavaScript tiles.
+- **Temporary-location verification:** first valid visit = candidate; second consistent visit on a different India-local day = provisional; third consistent visit on a different day = temporary-approved and eligible for route optimization. Same-day repeat bookings do not increase the count. Temporary pins never overwrite office-approved permanent pins.
+- **Deviation handling:** against an office-approved pin, up to 30 m is matched, 30–50 m creates a warning exception, and over 50 m creates a deviation exception. More than 20 m from a temporary cluster creates an outlier exception. Office staff can review/resolve exceptions with a note.
+- **Database baseline checked:** 10,988 masters; 8,284 delivered rows; 254 pending rows. GPS and location-observation tables were empty at the previous read-only count; synthetic verification tests were rolled back and retained no test records.
+- **Backend verification:** lpg-api v51 ACTIVE; production function deployed from checked-in source. Synthetic SQL transaction tests confirmed candidate → provisional → temporary_approved, same-day repeat deduplication, and 111.19 m deviation exception creation.
+- **CI:** public static validation passed for the 26 November GPS responsiveness source commits. Check GitHub Pages deployment for the latest source commit separately.
+- **Not verified:** actual GPS capture, tile rendering, touch dragging, offline queue recovery, or WhatsApp customer capture on a physical Android phone. No physical handset was attached to this session.
+- **Data safety:** no production consumer, pending, delivered, completion or approved GPS rows were altered by the synthetic SQL tests. Do not run test inserts outside rollback transactions.
 
 ---
 
@@ -609,3 +608,59 @@ No production customer master, delivered-cylinder, pending-booking, or completio
 - Preserve exception history and the delivery completion record even when the location check needs office review.
 - Keep the private DeliveryApp repository synchronized from `locate/main`; keep this GitHub handover as master and update the ChatGPT Library reference from the same content after every verified change.
 - Never mark Android field testing as complete without a real device test and recorded result.
+
+
+## 18. 26 November 2026 — GPS responsiveness, production verification and repository synchronization
+
+### Source changes and deployment
+- Canonical source: samruddhigas/locate main; latest source commit before this handover update: d861c0b88e456d1e39a23f0ea838a2a670b90589.
+- Reduced Dashboard Mark Done cold-start GPS fallback from 5 seconds to 3 seconds.
+- Standalone DeliveryApp and Dashboard now reuse a fresh live fix immediately only when it is at or better than 10 m; otherwise they watch briefly for a better fix and accept the best fresh fix up to 30 m after a bounded 3-second window. A fix worse than 30 m is not submitted as precise GPS.
+- Customer LocationCapture now immediately accepts a fix at or better than 10 m; otherwise it uses a maximum 3-second window and accepts the best fresh fix up to 30 m. The entrance map remains draggable/tap-to-place with road/satellite switching and the 500 m offset guard.
+- Mark Done does not wait for a map dialog. It records the current visit GPS automatically when available; delivery completion can still be saved if GPS is unavailable, with GPS status kept separate.
+- Updated the API contract test to check the intended 3-second GPS bound rather than the previous 5-second value.
+- Production lpg-api v51 ACTIVE; deliveryapp v3 ACTIVE. The v51 lpg-api deployment includes explicit TypeScript types that fixed previously failing private Deno checks.
+
+### Temporary-location and deviation behavior — verified with rollback-only SQL
+- Confirmed live production tables and the security-definer RPC are present: lpg_gps_temporary, lpg_delivery_location_observations, lpg_delivery_location_exceptions, and record_lpg_delivery_location_observation(...).
+- First unique visit: candidate. Second consistent visit on a different India-local calendar day: provisional. Third consistent visit on a different day: temporary_approved. The route publisher can use only a temporary_approved pin when no permanent approved pin exists.
+- Additional bookings for the same consumer on the same India-local day are tagged same_day_repeat and do not count toward the 2/3 confirmation threshold.
+- A visit more than 20 m from a temporary cluster is tagged outlier_review and creates an outlier exception; it does not move the cluster.
+- For permanent office-approved pins: <=30 m matched; >30 m to 50 m warning; >50 m deviation. Warning/deviation exceptions retain observed/reference coordinates, distance, accuracy, booking key, delivery person, timestamp and office review fields.
+- SQL transaction test output: candidate (count 1) → provisional (count 2) → temporary_approved (count 3); same-day repeat remained at count 3; a synthetic 111.19 m visit created an open deviation exception.
+- All test rows, including the temporary test consumer and approved test pin, were rolled back. No test records were retained.
+
+### Repository synchronization
+- Private repository samruddhigas/SAMRUDDHI-DELIVERY-APP contains a scheduled GitHub Actions workflow polling canonical locate/main every 5 minutes, plus workflow-dispatch support.
+- Workflow mirrors the standalone DeliveryApp frontend, active lpg-api source and tracked GPS migrations using the private repository's own GITHUB_TOKEN; no personal token or service-role key is embedded in the workflow.
+- Manual frontend mirror was updated during this release. The first scheduled mirror workflow run had succeeded earlier; the current source hash comparison and latest workflow run must be checked after the last commit before declaring unattended synchronization fully verified.
+
+### Validation and release status
+**Completed and verified**
+- Production database schema/RPC inspection and deployed Edge Function version check.
+- Rollback-only SQL tests for the repeated-visit state machine, same-day deduplication and deviation exception creation.
+- Public GitHub Actions static validation passed on the latest GPS source commit d861c0b... (run 45701165504). Earlier Pages deploys succeeded; final deployment status for the latest source commit must be confirmed separately.
+- Private repository CI passed on the previous mirror commit; current post-sync CI must be confirmed separately.
+- GPS wait contract regression fixed and static validation passed on the 26 November source commit.
+
+**Implemented but not tested end-to-end**
+- Office exception list and review action through a real authenticated office browser session.
+- Delivery completion + GPS capture using a real assigned booking and real delivery user session.
+- Customer token capture using an active WhatsApp link.
+- PWA cache refresh and offline queue behavior on a real Android phone.
+
+**Pending / cannot be honestly claimed complete**
+- Actual physical Android handset testing. No physical handset was connected to this development session. Browser/static/SQL tests do not prove GPS performance, map tile loading or touch interaction on an actual phone.
+- Verify GPS permission behavior, cold/warm GNSS time-to-fix, accuracy distribution, map touch/drag, and offline sync on at least two physical Android phones.
+- Verify a real temporary-approved customer pin is visible in the office route planner and can be published to the assigned delivery user.
+
+**Known limitations**
+- No application can guarantee 7 m GPS accuracy at every site; actual accuracy depends on handset GNSS, Android precise-location settings, sky view, building obstruction and network assistance.
+- Google Maps-style interaction uses CARTO/OSM and Esri imagery layers; actual Google Maps tiles require an authorized Google Maps API key and billing.
+- The Dashboard-generated DeliveryApp and standalone PWA remain separate implementations; the private repository mirror automates standalone sync, but parity checks are still required for the embedded Dashboard implementation.
+- Delivery completion remains possible without GPS so legitimate physical handovers are not blocked; the app must show missing GPS honestly and office review must retain deviations.
+
+### Section 13 and document-copy policy
+- Section 13 has been refreshed with the autonomous continuation prompt and source-of-truth rules.
+- Section 14 has been refreshed to this baseline.
+- This GitHub file remains the master. Update the ChatGPT Library reference from the exact same content after this commit.
