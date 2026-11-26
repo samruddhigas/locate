@@ -20,7 +20,11 @@ assert.ok(pendingImport.includes('db.rpc(functionName'), "Pending import must co
 const completion = section('if (action === "delivery_completion")', 'if (action === "locations_manage")');
 assert.ok(completion.includes('user.role !== "delivery"'), "Only delivery accounts may submit completion");
 assert.ok(completion.includes('from("lpg_pending")'), "Completion must verify current booking assignment");
-assert.ok(completion.includes('from("lpg_gps")'), "Completion must verify server-saved GPS");
+assert.ok(completion.includes('from("lpg_gps_history")'), "Completion must verify a server-saved GPS history row");
+assert.ok(completion.includes('.eq("booking_key", bookingKey)'), "Completion GPS proof must match the exact booking");
+assert.ok(completion.includes("hasUsableGps"), "Completion must validate the exact visit GPS observation");
+assert.ok(completion.includes("Delivery cannot be marked done"), "Server must reject completion without visit GPS");
+assert.ok(!completion.includes('const {data:gps,error:gpsError}=await db.from("lpg_gps")'), "Completion must not fall back to a general customer GPS pin");
 assert.ok(completion.includes('from("lpg_delivery_completions")'), "Completion must persist centrally");
 
 const routes = section('if (action === "route_manage")', 'if (action === "delivery_completion")');
@@ -62,14 +66,16 @@ assert.ok(app.includes("action:'route_manage',op:'list'"), "DeliveryApp must loa
 assert.ok(app.includes("Getting location…"), "Mark Done must attempt GPS automatically");
 assert.ok(app.includes("navigator.geolocation.watchPosition"), "GPS capture must continuously watch for better high-accuracy fixes");
 assert.ok(app.includes("bestFix.acc<=10"), "GPS capture should stop early when a 10m or better fix is available");
-assert.ok(app.includes(")),3000)"), "GPS watch must have a short 3-second bounded fallback");
+assert.ok(app.includes(")),30000);"), "GPS watch must have a bounded 30-second fresh-fix window");
+assert.ok(app.includes("captureMode!=='delivery_after_mark_delivered'&&_gpsFix"), "Mark Done must not reuse the warm mapping fix");
+assert.ok(app.includes("Date.now()-startedAt>=5000"), "GPS acquisition must allow a short refinement period before accepting a good fix");
 assert.ok(app.includes("String(x.consumer_no)===String(item.consumer_no)"), "GPS queue sync must remove only the matching consumer capture");
 assert.ok(!app.includes("state.pendingGps.some(g=>String(g.booking_key)===String(item.booking_key)))"), "GPS queue failures must not block delivery completion sync");
 assert.ok(app.includes("Best GPS accuracy was"), "GPS capture must reject poor final fixes instead of saving them as precise");
 assert.ok(app.includes("readings:[{lat:best.lat"), "Only the best selected fix should be submitted, without averaging while moving");
 assert.ok(app.includes("delivery_manual_lookup"), "DeliveryApp must support GPS-only consumer lookup");
 assert.ok(app.includes("pendingGps:state.pendingGps"), "Offline GPS captures must persist across reloads");
-assert.ok(app.includes("GPS not captured:"), "Delivery can complete with a clear GPS-missing status");
+assert.ok(app.includes("Delivery NOT marked done. Valid GPS (1–30 m) is required."), "Delivery must remain pending if GPS capture fails");
 assert.ok(api.includes('acc > 30'), "Server must enforce a realistic 30m maximum GPS accuracy");
 assert.ok(api.includes('"delivery_manual_lookup"'), "Server must permit GPS-only consumer lookup for delivery accounts");
 assert.ok(api.includes('gps_status: hasUsableGps ? "captured_pending_location_check" : "not_captured"'), "Completion must record GPS status separately from delivery status");
@@ -89,7 +95,9 @@ assert.ok(dashboard.includes("stopType==='approved_consumer_gps'"), "Office dash
 assert.ok(dashboard.includes("await captureDeliveryGPS(d, 'delivery_after_mark_delivered')"), "Embedded DeliveryApp must capture a fresh GPS observation on every Mark Done");
 assert.ok(dashboard.includes("navigator.geolocation.watchPosition(pos=>"), "Embedded DeliveryApp must use continuous GPS updates");
 assert.ok(dashboard.includes("bestFix.acc<=10)finish()"), "Embedded DeliveryApp must stop early for a 10m or better GPS fix");
-assert.ok(dashboard.includes("timer=setTimeout(()=>finish(bestFix&&bestFix.acc<=30?null:new Error") && dashboard.includes(")),3000)"), "Dashboard GPS fallback must be bounded to 3 seconds");
+assert.ok(dashboard.includes("timer=setTimeout(()=>finish(bestFix&&bestFix.acc>0&&bestFix.acc<=30?null:new Error") && dashboard.includes(")),30000);"), "Dashboard GPS acquisition must wait up to 30 seconds for a valid fix");
+assert.ok(dashboard.includes("captureMode!=='delivery_after_mark_delivered'&&_gps"), "Embedded Mark Done must not reuse a warm mapping fix");
+assert.ok(dashboard.includes("Date.now()-startedAt>=5000"), "Embedded GPS capture must allow a refinement period");
 assert.ok(dashboard.includes("APP.pendingGps"), "Embedded DeliveryApp must persist and sync offline GPS captures");
 assert.ok(dashboard.includes("async function searchGpsOnlyConsumers()"), "Embedded DeliveryApp must support GPS-only consumer search");
 assert.ok(dashboard.includes("'delivery_manual_lookup'"), "Embedded GPS-only search must use the dedicated manual lookup permission");
