@@ -915,3 +915,21 @@ No production customer master, delivered-cylinder, pending-booking, or completio
 - `tools/validate_static.py` now includes regression assertions for the new GPS/map/offline contracts. A completed GitHub Actions run was not available to confirm execution in this session.
 - **Not yet verified:** real Android GNSS readings, actual street/satellite tile loading on the user's handset, touch/drag accuracy on a physical device, live GitHub Pages served asset version, and an end-to-end capture by a consumer/delivery user. Do not mark these as passed until physically tested.
 - A browser page cannot manufacture a GPS fix if the operating system/browser does not return coordinates. If no coordinate is returned at all, there is no honest location around which to display a pin map; when a weak coordinate is returned, the map is shown for inspection but saving remains blocked until accuracy is <=30 m.
+
+### Section 22 addendum — In-map GPS refresh controls
+- Consumer entrance map now includes a **Refresh GPS reading** action. It closes the weak/old preview, starts a fresh acquisition, and returns to the map when a coordinate is received.
+  - Commit `3ee3e3f7b6886957303386bdc8d40c3c20b8159f`.
+- Standalone DeliveryApp entrance map now includes **Refresh GPS**. The map picker returns a retry signal and the capture flow restarts acquisition without requiring the user to leave the customer detail workflow.
+  - Markup commit `d4a5869d0d47851129d424ba8e591295c9967735`.
+  - Logic commit `076e39ced7adbe500437e96fc129849ab2949442`.
+- Dashboard-embedded DeliveryApp map now includes **Refresh GPS** and re-enters fresh acquisition before allowing the entrance pin to be saved.
+  - Commit `23c4ff7cea8804ab5c9301893334952d1f3e926f`.
+- Added regression assertions for the consumer, standalone and embedded in-map refresh actions:
+  - `be6406b833ef6fd145854b2dd3d5c7c230aa120a`.
+- Re-synchronized the private DeliveryApp mirror:
+  - app.js `9e4a8df1d11d001382ffe700cba79f6b2f38b0ea`
+  - index.html `ee2179e05899acf7d9facbe6af5a962342399664`
+- Re-fetched all three canonical/mirror files and verified exact matching blob SHAs:
+  - app.js `f9d001de8d4fcc51f955f81bcdde982e153dad68`
+  - index.html `22ae357b8e3c1182903b52aecd5519e217fe7d0b`
+  - sw.js `ceb5c05b3f2f10d6e865e2a1e3c7ad81fc3754b9`.
