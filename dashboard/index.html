@@ -6431,17 +6431,22 @@ async function captureDeliveryGPS(d, captureMode='delivery_after_mark_delivered'
   if (!navigator.geolocation || !d?.consumerNo) { toast('⚠️ Location permission or GPS unavailable','#b45309'); return false; }
   toast('📍 Finding best GPS fix…','#2563eb');
   try {
-    const warmFix=(_gps&&Number.isFinite(Number(_gps.lat))&&Number.isFinite(Number(_gps.lng))&&Number(_gps.acc)>0&&Number(_gps.acc)<=10&&Date.now()-Number(_gps.ts||0)<=10000)
+    const warmFix=captureMode!=='delivery_after_mark_delivered'&&_gps&&
+      Number.isFinite(Number(_gps.lat))&&Number(_gps.lat)>=-90&&Number(_gps.lat)<=90&&
+      Number.isFinite(Number(_gps.lng))&&Number(_gps.lng)>=-180&&Number(_gps.lng)<=180&&
+      Number(_gps.acc)>0&&Number(_gps.acc)<=10&&Date.now()-Number(_gps.ts||0)<=5000
       ?{lat:Number(_gps.lat),lng:Number(_gps.lng),acc:Number(_gps.acc),ts:Number(_gps.ts)}:null;
     const best = warmFix||await new Promise((resolve,reject)=>{
-      let watch=null,timer=null,bestFix=null,finished=false;
+      let watch=null,timer=null,bestFix=null,finished=false,startedAt=Date.now();
       const finish=err=>{if(finished)return;finished=true;if(watch!==null)navigator.geolocation.clearWatch(watch);if(timer!==null)clearTimeout(timer);if(err)reject(err);else resolve(bestFix);};
-      timer=setTimeout(()=>finish(bestFix&&bestFix.acc>0&&bestFix.acc<=30?null:new Error('No reliable GPS fix received within 25 seconds. Delivery was NOT marked done. Enable Precise location, wait in an open area, and retry.')),25000);
+      timer=setTimeout(()=>finish(bestFix&&bestFix.acc>0&&bestFix.acc<=30?null:new Error('No reliable GPS fix received within 30 seconds. Delivery was NOT marked done. Check Android and Chrome location permissions, then retry.')),30000);
       try { watch=navigator.geolocation.watchPosition(pos=>{
         const c=pos.coords,acc=Number(c.accuracy);if(!Number.isFinite(acc)||acc<=0||acc>1000)return;
         const fix={lat:Number(c.latitude),lng:Number(c.longitude),acc,ts:Number(pos.timestamp)||Date.now()};
-        if(!Number.isFinite(fix.lat)||!Number.isFinite(fix.lng)||Date.now()-fix.ts>10000)return;
-        if(!bestFix||fix.acc<bestFix.acc)bestFix=fix;if(bestFix.acc<=10)finish();
+        if(!Number.isFinite(fix.lat)||fix.lat < -90||fix.lat > 90||!Number.isFinite(fix.lng)||fix.lng < -180||fix.lng > 180||
+           fix.ts>Date.now()+5000||Date.now()-fix.ts>10000)return;
+        if(!bestFix||fix.acc<bestFix.acc)bestFix=fix;
+        if(bestFix.acc<=10&&Date.now()-startedAt>=5000)finish();
       },err=>{if(err.code===1)finish(new Error('Location permission denied. Allow precise location for this app.'));},{enableHighAccuracy:true,maximumAge:0,timeout:25000});}
       catch(e){finish(e);}
     });
