@@ -6476,7 +6476,10 @@ function showDeliveryGpsPin(d,best){
 function setDeliveryGpsLayer(which){if(!_deliveryGpsMap)return;if(_deliveryGpsLayer==='street')_deliveryGpsMap.removeLayer(_deliveryGpsStreet);if(_deliveryGpsLayer==='satellite')_deliveryGpsMap.removeLayer(_deliveryGpsSatellite);_deliveryGpsLayer=which;(_deliveryGpsLayer==='street'?_deliveryGpsStreet:_deliveryGpsSatellite).addTo(_deliveryGpsMap);}
 async function saveDeliveryGpsPin(){
   if(!_deliveryGpsCurrent||!_deliveryGpsBest||!_deliveryGpsMarker)return;
-  const btn=document.getElementById('deliveryGpsPinSave');btn.disabled=true;btn.textContent='Saving…';const p=_deliveryGpsMarker.getLatLng(),d=_deliveryGpsCurrent,best=_deliveryGpsBest;
+  const btn=document.getElementById('deliveryGpsPinSave'),p=_deliveryGpsMarker.getLatLng(),d=_deliveryGpsCurrent,best=_deliveryGpsBest;
+  const offset=deliveryGpsDistance(best.lat,best.lng,p.lat,p.lng);
+  if(!Number.isFinite(best.acc)||best.acc<=0||best.acc>30||offset>500){btn.disabled=true;toast('⚠️ Cannot save · GPS accuracy must be <=30 m and pin within 500 m','#b45309');return;}
+  btn.disabled=true;btn.textContent='Saving…';
   const offset=deliveryGpsDistance(best.lat,best.lng,p.lat,p.lng);
   if(!Number.isFinite(best.acc)||best.acc<=0||best.acc>30||offset>500){btn.disabled=false;btn.textContent='Confirm & Save';toast('⚠️ Cannot save · GPS must be <=30 m and entrance pin within 500 m','#b45309');return;}
   const payload={booking_key:String(d.orderNo||d.id||''),consumer_no:String(d.consumerNo),raw_lat:best.lat,raw_lng:best.lng,pin_lat:p.lat,pin_lng:p.lng,lat:p.lat,lng:p.lng,acc:best.acc,readings:_deliveryGpsSamples.slice(-5),capture_mode:_deliveryGpsCaptureMode};
