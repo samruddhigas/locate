@@ -183,6 +183,33 @@ if customer_page.exists():
     if "function setConsumerMapLayer(which)" not in customer_source or "setConsumerMapLayer('satellite')" not in customer_source:
         failures.append("Canonical customer location page is missing road/satellite map controls")
 
+# GPS end-to-end source-contract checks. These catch regressions where a mirror
+# or embedded app silently reintroduces weak/zero GPS or bypasses visit verification.
+consumer_source = customer_source
+delivery_js_path = ROOT / "deliveryapp" / "app.js"
+delivery_js_source = delivery_js_path.read_text(encoding="utf-8") if delivery_js_path.exists() else ""
+api_path = ROOT / "supabase" / "functions" / "lpg-api" / "index.ts"
+api_source = api_path.read_text(encoding="utf-8") if api_path.exists() else ""
+gps_migration = ROOT / "supabase" / "migrations" / "20261126061457_gps_capture_integrity_and_required_delivery_visit_fix.sql"
+gps_checks = [
+    ("consumer GPS watch uses fresh high-accuracy readings", "timeout:45000,maximumAge:0" in consumer_source),
+    ("consumer capture has a 45-second bounded window", "},45000);" in consumer_source),
+    ("consumer map can display weak fixes without allowing weak submission", "function showEntranceMap(c,allowWeakFix=false)" in consumer_source and "GPS accuracy is ±" in consumer_source),
+    ("consumer permission denial is distinguished from transient GPS errors", "if(err&&err.code===1)" in consumer_source),
+    ("delivery completion does not reuse the warm location watcher", "captureMode!=='delivery_after_mark_delivered'&&_gpsFix" in delivery_js_source),
+    ("delivery GPS refines a good fix before stopping", "Date.now()-startedAt>=5000" in delivery_js_source),
+    ("delivery GPS has a 30-second acquisition window", "}},30000);" in delivery_js_source or ")),30000);" in delivery_js_source),
+    ("server rejects zero accuracy", "!Number.isFinite(acc) || acc <= 0 || acc > 30" in api_source),
+    ("server requires the exact booking GPS history row", '.eq("booking_key",bookingKey).eq("consumer_no",consumerNo).eq("captured_by",user.name)' in api_source),
+    ("server blocks completion without a valid visit GPS row", "Delivery cannot be marked done: a fresh GPS reading for this exact booking" in api_source),
+    ("server no longer falls back to the general consumer GPS pin", 'const {data:gps,error:gpsError}=await db.from("lpg_gps")' not in api_source),
+    ("database GPS integrity migration is committed", gps_migration.exists()),
+]
+for label, passed in gps_checks:
+    if not passed:
+        failures.append("GPS contract: " + label)
+print(f"GPS source contracts: {sum(1 for _, passed in gps_checks if passed)}/{len(gps_checks)} passed.")
+
 api_test = subprocess.run(["node", str(ROOT / "tools" / "test_api_contract.js")], capture_output=True, text=True)
 if api_test.returncode:
     failures.append("API contract tests failed: " + api_test.stderr.strip())
