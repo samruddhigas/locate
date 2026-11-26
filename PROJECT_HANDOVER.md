@@ -854,3 +854,64 @@ No production customer master, delivered-cylinder, pending-booking, or completio
 ### Supersedes earlier statements
 - This Section 22 supersedes the earlier Section 20/21 references to a 3-second GPS timeout, permissive GPS-optional delivery completion, and a general customer GPS fallback being sufficient proof of a delivery visit.
 - It also supersedes the earlier statement that a 25-second wait alone was the final fix. Current capture windows are 45 seconds for the consumer form and 30 seconds for DeliveryApp Mark Done, with exact visit-specific server validation.
+
+## 22. 26 November 2026 — Full GPS, map-pin and location-capture audit
+
+### Canonical sources audited
+- Consumer location link: root `index.html` (WhatsApp links must continue to point to the root page).
+- Office Dashboard and its embedded DeliveryApp: `dashboard/index.html`.
+- Standalone Android-first DeliveryApp: `deliveryapp/index.html`, `deliveryapp/app.js`, `deliveryapp/sw.js`, `deliveryapp/app.css`.
+- Backend: `supabase/functions/lpg-api/index.ts` on project `uggqsvgxjhvdfkddqzyh` only.
+- Database: GPS master/history, completion, temporary-location, observation, exception, link and route tables.
+
+### Issues found and corrected in this audit
+1. **Map pin was not actually part of every embedded delivery capture.** The embedded app contained a draggable map and save functions, but its normal Mark Done capture path bypassed them and wrote the raw GPS point directly. The capture path now opens the draggable entrance-pin map for every delivery GPS capture, including Mark Done and GPS-only search. Street and satellite layers are available; street is the initial layer. A missing map library fails closed.
+2. **Weak GPS readings did not get a map preview in DeliveryApp.** Delivery capture previously rejected accuracy above 30 m before the user could inspect a map. It now permits a map preview for a valid coordinate (up to the browser's 1000 m reading ceiling), but Confirm & Save remains disabled unless reported GPS accuracy is 1–30 m and the entrance pin is within 500 m. The server independently enforces the same 30 m accuracy and 500 m pin-offset limits.
+3. **Standalone app skipped map pin on Mark Done.** It now uses the draggable pin picker on all GPS capture modes. The confirmation control is disabled above 30 m and when the selected pin is more than 500 m from the raw fix.
+4. **Android Chrome first-fix path.** Consumer capture and both DeliveryApp paths now request a high-accuracy `getCurrentPosition` reading in parallel with `watchPosition`, both feeding the same coordinate/time/accuracy validation. This is a fallback to the continuous watcher, not a guarantee of GNSS performance.
+5. **Consumer evidence samples were discarded.** The consumer map-opening routine previously replaced the accumulated reading list with one point. It now retains up to 20 fresh samples and submits those readings with the raw device fix and separately selected entrance pin.
+6. **Completion timestamp could predate map confirmation.** Standalone DeliveryApp now timestamps completion after GPS capture and map-pin confirmation, keeping the server's visit-to-completion time check aligned with the actual visit workflow.
+7. **Offline ordering race in embedded DeliveryApp.** The online retry handler now awaits GPS queue synchronization before attempting queued delivery completions. Server-side completion still independently requires a valid GPS history row for the exact booking, consumer and signed-in delivery user.
+8. **GPS script cache.** DeliveryApp service worker remains at cache v18 and fetches `app.js`/service-worker scripts network-first, with cached fallback only when offline.
+
+### Commits
+- Standalone DeliveryApp map-on-all-captures and weak-fix map preview:
+  - `150a0123aeff359f849fbc9679fd0db0836b5504`
+  - `d913e94333e0989330b4589492b4d6fbfc5fdb71`
+  - `f137b03f8932d32186df9758819db10240147b99`
+  - completion timestamp fix `bda68f69cc786894bdb44a08a1c750fc695d850f`
+- Consumer location capture:
+  - sample retention `294c80ea9e56e6930ac4ede56585a7b5620ab7d5`
+  - parallel one-shot fallback `f30a8ad082b7653753dbf2fa13a8b032175d196f`
+- Embedded Dashboard DeliveryApp:
+  - map for all captures / weak-fix preview `9143b5bc0f1bf58bc2883d89e779398f10799aed`
+  - enforce accuracy and pin offset at save `7ded968b134c65fa83c426533ecefc465b071fe7`
+  - explicit save-time guard `0dc3cc6ba4baf1cfd7ee586b73ca6fb34c7d7923`
+  - parallel one-shot fallback `fd2d16c35dbba855b3bca09836e14bd031f06f3c`
+  - sequential offline GPS-before-completion sync `18e846fb19e0cafa12f4dd9830763a371e7f2554`
+- Regression contract checks expanded in `tools/validate_static.py`:
+  - `bf72daf65d0b8672ac75d1f5b57b635174444560`
+
+### Repository synchronization
+- Canonical source remains `locate/deliveryapp/`.
+- Standalone private mirror `SAMRUDDHI-DELIVERY-APP` was synchronized after the canonical changes:
+  - app.js mirror commit `f8bf7b422ca9ae79e82dcdd617e5f9d93343af93`
+  - index.html mirror commit `48fcf6abcf0054da2e32caf9ac9a007e73c93a3e`
+  - sw.js mirror commit `9ae02f6fde97ceab04666aa83c9ee73cf9718dbe`
+- Re-fetch and compare Git blob SHA for the three files before closing this audit.
+
+### Backend and database verification (read-only)
+- Supabase project `uggqsvgxjhvdfkddqzyh` reports `ACTIVE_HEALTHY`; the deployed `lpg-api` Edge Function is active at version 53 and its deployed `index.ts` content exactly matches the repository source.
+- Delivery completion handler requires the exact `delivery_after_mark_delivered` GPS history row for booking + consumer + signed-in delivery user, with 1–30 m accuracy and a bounded time window. No fallback to the general consumer master pin is used.
+- Database trigger `lpg_delivery_completion_require_visit_gps` is installed and enforces a visit GPS fix on new completion inserts/updates. GPS history booking/consumer unique upsert index is installed.
+- GPS-related tables have RLS enabled. Read-only grants inspection showed only `service_role` table privileges for the GPS/completion/observation/exception tables; the security advisor reports RLS-enabled/no-policy informational findings, which are consistent with this service-role-only access pattern.
+- Current database counts at audit time: `lpg_gps=0`, `lpg_gps_history=0`, `lpg_gps_temporary=0`, `lpg_delivery_location_observations=0`, `lpg_delivery_location_exceptions=0`; four legacy `lpg_delivery_completions` rows remain with `gps_status=not_captured` and `location_check_status=not_checked`. These historical rows were not modified. New completions are protected by the current API and database trigger.
+- The history upsert index exists in the live database, but the two later repository migration filenames for that index are not listed in migration history. Treat this as migration-history drift to reconcile in a future controlled migration; do not drop/recreate production indexes merely to make the list look tidy.
+
+### Validation status and limits
+- Re-fetched canonical source and confirmed the intended code contracts are present: map pin on all DeliveryApp captures, weak-fix preview but no weak submission, one-shot GPS fallback, consumer sample retention, post-pin completion timestamp, and ordered offline sync.
+- The deployed backend source was compared byte-for-byte with the repository source.
+- Database schema objects, trigger, indexes, RLS grants, row counts and deployed Edge Function version were checked live.
+- `tools/validate_static.py` now includes regression assertions for the new GPS/map/offline contracts. A completed GitHub Actions run was not available to confirm execution in this session.
+- **Not yet verified:** real Android GNSS readings, actual street/satellite tile loading on the user's handset, touch/drag accuracy on a physical device, live GitHub Pages served asset version, and an end-to-end capture by a consumer/delivery user. Do not mark these as passed until physically tested.
+- A browser page cannot manufacture a GPS fix if the operating system/browser does not return coordinates. If no coordinate is returned at all, there is no honest location around which to display a pin map; when a weak coordinate is returned, the map is shown for inspection but saving remains blocked until accuracy is <=30 m.
