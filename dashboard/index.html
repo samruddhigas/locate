@@ -2500,6 +2500,7 @@ body.delivery-restricted .logged-in-bar #loggedInRole { display:none !important;
       <h3>📍 <span id="pinMapTitle">Set Consumer Location</span></h3>
       <button onclick="closePinMap()" style="background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer;padding:0 4px">✕</button>
     </div>
+    <div style="display:flex;gap:8px;padding:8px 12px 0"><button class="btn" type="button" onclick="setAdminPinLayer('street')">Road map</button><button class="btn" type="button" onclick="setAdminPinLayer('satellite')">Satellite</button></div>
     <div id="adminPinMap"></div>
     <div class="pin-map-footer">
       <div class="pin-map-coords" id="pinMapCoords">Drag pin to exact location</div>
@@ -7619,6 +7620,28 @@ async function clearConsumerGPS(consumerNo, consumerName) {
 // ADMIN PIN MAP — draggable location editor
 // ================================================================
 let _adminMap = null, _adminMarker = null, _adminAccCircle = null, _pinCno = null;
+let _adminStreetLayer=null,_adminSatelliteLayer=null,_adminPinLayer='street';
+let _lastConsumerGeocodeAt=0;
+function setAdminPinLayer(layer){
+  if(!_adminMap||!_adminStreetLayer||!_adminSatelliteLayer)return;
+  if(layer==='satellite'){_adminMap.removeLayer(_adminStreetLayer);_adminSatelliteLayer.addTo(_adminMap);_adminPinLayer='satellite';}
+  else{_adminMap.removeLayer(_adminSatelliteLayer);_adminStreetLayer.addTo(_adminMap);_adminPinLayer='street';}
+}
+async function geocodeConsumerAddress(consumer){
+  const address=[consumer?.address,consumer?.area,CITY,'Maharashtra','India'].filter(Boolean).join(', ');
+  if(!address.trim())return null;
+  const wait=Math.max(0,1100-(Date.now()-_lastConsumerGeocodeAt));
+  if(wait)await new Promise(resolve=>setTimeout(resolve,wait));
+  _lastConsumerGeocodeAt=Date.now();
+  try{
+    const response=await fetch('https://nominatim.openstreetmap.org/search?q='+encodeURIComponent(address)+'&format=json&limit=1',{headers:{'Accept-Language':'en'}});
+    if(!response.ok)return null;
+    const rows=await response.json();
+    if(!rows?.length)return null;
+    const lat=Number(rows[0].lat),lng=Number(rows[0].lon);
+    return Number.isFinite(lat)&&Number.isFinite(lng)?{lat,lng,label:rows[0].display_name}:null;
+  }catch(e){console.warn('Consumer address geocoding failed',e);return null;}
+}
 
 function openPinMap(cno) {
   if (!window.L) { showToastMain('Map library unavailable. GPS pin editing is temporarily unavailable.'); return; }
@@ -7640,7 +7663,9 @@ function openPinMap(cno) {
   // Init map once
   if (!_adminMap) {
     _adminMap = L.map('adminPinMap', { zoomControl:true, attributionControl:false });
-    L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', { maxZoom:20 }).addTo(_adminMap);
+    _adminStreetLayer=L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',{maxZoom:22,attribution:'© OpenStreetMap contributors © CARTO'});
+    _adminSatelliteLayer=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Tiles © Esri'});
+    (_adminPinLayer==='satellite'?_adminSatelliteLayer:_adminStreetLayer).addTo(_adminMap);
   }
 
   _adminMap.setView([lat, lng], 19);
@@ -7669,7 +7694,14 @@ function openPinMap(cno) {
   }
 
   document.getElementById('pinMapCoords').textContent =
-    src ? `${lat.toFixed(6)}, ${lng.toFixed(6)}` : 'Drag pin to consumer location';
+    src ? (src.source==='staff_pin'?'Office-placed entrance pin (manual), not device GPS · ':'')+`${lat.toFixed(6)}, ${lng.toFixed(6)}` : 'Finding consumer address…';
+  if(!src&&consumer){
+    geocodeConsumerAddress(consumer).then(found=>{
+      if(_pinCno!==cno||!found||!_adminMap||!_adminMarker)return;
+      const point=[found.lat,found.lng];_adminMap.setView(point,19);_adminMarker.setLatLng(point);
+      document.getElementById('pinMapCoords').textContent='Address estimate — adjust the pin to the exact entrance · '+found.lat.toFixed(6)+', '+found.lng.toFixed(6);
+    }).catch(()=>{});
+  }
 }
 
 function closePinMap() {
@@ -7681,13 +7713,16 @@ async function savePinLocation() {
   const pos = _adminMarker.getLatLng();
   const now = new Date().toISOString();
 
+  // A manually placed map pin is a useful office-approved route coordinate,
+  // but it is NOT a device GPS fix. Use the sentinel accuracy and label it honestly.
+  const manualPinAccuracy=10000;
   const gpsRecord = {
-    lat: pos.lat, lng: pos.lng, acc: 5,
-    capturedAt: now, status: 'approved', source: 'staff_pin'
+    lat: pos.lat, lng: pos.lng, acc: manualPinAccuracy,
+    capturedAt: now, status: 'approved', source: 'staff_pin', locationMethod:'office_manual_pin'
   };
 
   if (!DB._client || !DB._online) { showToastMain('⚠️ Connect to the LPG API before saving a location.'); return; }
-  try { await gpsApi('save', { consumer_no:_pinCno, lat:pos.lat, lng:pos.lng, acc:5, source:'staff_pin' }); }
+  try { await gpsApi('save', { consumer_no:_pinCno, lat:pos.lat, lng:pos.lng, acc:manualPinAccuracy, source:'staff_pin', capture_mode:'office_manual_pin' }); }
   catch(e) { showToastMain('❌ GPS save failed: '+e.message); return; }
   STATE.consumerGPS[_pinCno] = gpsRecord;
   try { localStorage.setItem('lpg_gps', JSON.stringify(STATE.consumerGPS)); } catch(e){}
