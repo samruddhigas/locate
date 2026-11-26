@@ -6319,6 +6319,7 @@ async function markDone(id) {
   if (!d.consumerNo || !(d.orderNo || d.id)) { toast('⚠️ Booking details incomplete · refresh from office','#b45309'); return; }
   // Every delivery needs a fresh visit reading. Never reuse an earlier mapping pin
   // as proof of where today's cylinder was handed over.
+  d.gpsAt=null; // discard any earlier mapping/queued timestamp; this visit needs a fresh fix.
   const gpsCaptured=await captureDeliveryGPS(d, 'delivery_after_mark_delivered');
   // Require a fresh valid visit GPS fix before completion. A valid fix queued
   // locally while offline is acceptable; a missing fix is not.
