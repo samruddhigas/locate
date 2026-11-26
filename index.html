@@ -420,6 +420,18 @@ window.addEventListener('DOMContentLoaded',async()=>{
     if(_consumerArea){const a=document.createElement('div');a.className='consumer-no';a.textContent='Delivery Area: '+_consumerArea;document.getElementById('consumerNo').after(a);}
   }catch(e){showError(e.message||'This secure location link is invalid or expired.');disableBtn();}
 });
+window.__nativeGpsCallbacks=window.__nativeGpsCallbacks||{};
+function requestConsumerNativeGps(onPosition,onError){
+ if(!window.AndroidLocation||typeof window.AndroidLocation.getCurrentLocation!=='function')return false;
+ const id='native_'+Date.now()+'_'+Math.random().toString(36).slice(2,10);
+ window.__nativeGpsCallbacks[id]=(lat,lng,acc,ts,error)=>{
+  delete window.__nativeGpsCallbacks[id];
+  if(error){onError({code:2,message:String(error)});return;}
+  onPosition({coords:{latitude:Number(lat),longitude:Number(lng),accuracy:Number(acc)},timestamp:Number(ts)||Date.now()});
+ };
+ try{window.AndroidLocation.getCurrentLocation(id);setTimeout(()=>{delete window.__nativeGpsCallbacks[id]},35000);return true;}
+ catch(e){delete window.__nativeGpsCallbacks[id];onError({code:2,message:e.message||'Native Android GPS request failed'});return false;}
+}
 function startCapture(){
   if(_capturing||_captureReady)return;
   if(!navigator.geolocation){showError('Your browser does not support GPS. Please open this link in Chrome.');return;}
@@ -431,6 +443,8 @@ function startCapture(){
   document.getElementById('pinMapPanel').style.display='none';document.getElementById('accMeter').classList.add('visible');
   const gpsOptions={enableHighAccuracy:true,timeout:45000,maximumAge:0};
   _watchId=navigator.geolocation.watchPosition(onGPSReading,onGPSError,gpsOptions);
+  // Native Android wrapper can provide a separate Google Play services fused fix.
+  requestConsumerNativeGps(onGPSReading,onGPSError);
   // Android Chrome may deliver the first usable fix faster through the one-shot
   // provider path. Run it alongside watchPosition; both feed the same validator.
   navigator.geolocation.getCurrentPosition(onGPSReading,onGPSError,{enableHighAccuracy:true,timeout:20000,maximumAge:0});
