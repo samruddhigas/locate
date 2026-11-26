@@ -7654,7 +7654,7 @@ function openPinMap(cno) {
   // Default: consumer GPS, else depot
   const lat = src ? src.lat : 20.9371;
   const lng = src ? src.lng : 78.5921;
-  const acc = src ? (src.acc || 20) : 50;
+  const acc = src ? (src.source==='staff_pin'?0:(src.acc || 20)) : 50;
 
   document.getElementById('pinMapTitle').textContent =
     (consumer ? consumer.consumerName : cno) + ' — Set Location';
@@ -7671,11 +7671,14 @@ function openPinMap(cno) {
   _adminMap.setView([lat, lng], 19);
   setTimeout(() => _adminMap.invalidateSize(), 150);
 
-  // Accuracy circle
-  if (_adminAccCircle) _adminAccCircle.remove();
-  _adminAccCircle = L.circle([lat, lng], {
-    radius: acc, color:'#4f7cff', fillColor:'#4f7cff', fillOpacity:0.12, weight:1
-  }).addTo(_adminMap);
+  // Accuracy circle only for measured device GPS. A manually placed office pin
+  // has no device-accuracy radius and must not display a misleading precision circle.
+  if (_adminAccCircle) {_adminAccCircle.remove();_adminAccCircle=null;}
+  if(src&&src.source!=='staff_pin'&&acc>0){
+    _adminAccCircle = L.circle([lat, lng], {
+      radius: acc, color:'#4f7cff', fillColor:'#4f7cff', fillOpacity:0.12, weight:1
+    }).addTo(_adminMap);
+  }
 
   // Draggable marker
   const icon = L.divIcon({
@@ -9417,7 +9420,7 @@ function renderApprovalMap() {
       if (!g.lat || !g.lng) return;
       if (STATE.gpsApprovals[cno]) return; // pending overrides
       const icon = L.divIcon({
-        html:`<div style="width:10px;height:10px;border-radius:50%;background:var(--green);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3)"></div>`,
+        html:`<div style="width:10px;height:10px;border-radius:50%;background:${g.source==='staff_pin'?'#8b5cf6':'var(--green)'};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3)"></div>`,
         iconSize:[10,10], iconAnchor:[5,5], className:''
       });
       const name = lookupConsumerName(cno) || cno;
