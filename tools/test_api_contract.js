@@ -21,7 +21,7 @@ const completion = section('if (action === "delivery_completion")', 'if (action 
 assert.ok(completion.includes('user.role !== "delivery"'), "Only delivery accounts may submit completion");
 assert.ok(completion.includes('from("lpg_pending")'), "Completion must verify current booking assignment");
 assert.ok(completion.includes('from("lpg_gps_history")'), "Completion must verify a server-saved GPS history row");
-assert.ok(completion.includes('.eq("booking_key", bookingKey)'), "Completion GPS proof must match the exact booking");
+assert.ok(completion.includes('.eq("booking_key",bookingKey)'), "Completion GPS proof must match the exact booking");
 assert.ok(completion.includes("hasUsableGps"), "Completion must validate the exact visit GPS observation");
 assert.ok(completion.includes("Delivery cannot be marked done"), "Server must reject completion without visit GPS");
 assert.ok(!completion.includes('const {data:gps,error:gpsError}=await db.from("lpg_gps")'), "Completion must not fall back to a general customer GPS pin");
