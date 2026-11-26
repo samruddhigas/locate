@@ -933,3 +933,6 @@ No production customer master, delivered-cylinder, pending-booking, or completio
   - app.js `f9d001de8d4fcc51f955f81bcdde982e153dad68`
   - index.html `22ae357b8e3c1182903b52aecd5519e217fe7d0b`
   - sw.js `ceb5c05b3f2f10d6e865e2a1e3c7ad81fc3754b9`.
+
+- Office map audit: the existing GPS approval map plots all coordinate-bearing pending submissions and all approved consumer pins (pending orange, approved green). The office route overview map plots each optimized GPS stop plus the depot. These views were already present and were retained; the static regression validator now checks both loops so future changes do not silently remove the all-pins views.
+- Validator map-view regression assertions committed in `9e27651940cd40c05aa685775cfbf7b7c2d3ff1f`.
