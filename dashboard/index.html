@@ -8650,6 +8650,56 @@ function haversine(a, b) {
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
 }
 
+// Road-network travel-time matrix (OSRM demo, best-effort only).
+// The public demo has no uptime guarantee and is rate-limited; route planning falls
+// back to the local straight-line optimizer if it is unavailable or the route is large.
+async function fetchRoadTravelMatrix(depot,stops){
+  if(!Array.isArray(stops)||!stops.length||stops.length>40)return null;
+  const points=[depot,...stops];
+  const coordinates=points.map(p=>Number(p.lng)+','+Number(p.lat)).join(';');
+  try{
+    const response=await fetch('https://router.project-osrm.org/table/v1/driving/'+coordinates+'?annotations=distance,duration',{headers:{'Accept':'application/json'}});
+    if(!response.ok)return null;
+    const data=await response.json();
+    if(data.code!=='Ok'||!Array.isArray(data.durations)||!Array.isArray(data.distances)||data.durations.length!==points.length)return null;
+    if(data.durations.some(row=>!Array.isArray(row)||row.length!==points.length)||data.distances.some(row=>!Array.isArray(row)||row.length!==points.length))return null;
+    return {durations:data.durations,distances:data.distances};
+  }catch(e){console.warn('Road matrix unavailable; using straight-line fallback.',e);return null;}
+}
+function optimizeRouteWithRoadMatrix(stops,matrix){
+  if(!stops.length)return {stops:[],distanceKm:0,durationMin:0};
+  const n=stops.length;
+  const duration=(a,b)=>Number(matrix.durations[a]?.[b]??Infinity);
+  const distance=(a,b)=>Number(matrix.distances[a]?.[b]??Infinity);
+  const route=[],remaining=new Set(Array.from({length:n},(_,i)=>i+1));
+  let current=0;
+  while(remaining.size){
+    let best=null,bestCost=Infinity;
+    for(const idx of remaining){const cost=duration(current,idx);if(cost<bestCost){bestCost=cost;best=idx;}}
+    if(best===null||!Number.isFinite(bestCost))return null;
+    route.push(best);remaining.delete(best);current=best;
+  }
+  const pathCost=sequence=>{let total=0,prev=0;for(const idx of sequence){total+=duration(prev,idx);prev=idx;}total+=duration(prev,0);return total;};
+  let improved=true,passes=0;
+  while(improved&&passes<12){
+    improved=false;passes++;
+    for(let i=0;i<route.length-1&&!improved;i++){
+      for(let k=i+1;k<route.length;k++){
+        const candidate=route.slice(0,i).concat(route.slice(i,k+1).reverse(),route.slice(k+1));
+        if(pathCost(candidate)+1<pathCost(route)){route.splice(0,route.length,...candidate);improved=true;break;}
+      }
+    }
+  }
+  let prev=0,totalMeters=0,totalSeconds=0;
+  const ordered=route.map(idx=>{
+    const km=distance(prev,idx)/1000,mins=duration(prev,idx)/60;
+    totalMeters+=distance(prev,idx);totalSeconds+=duration(prev,idx);prev=idx;
+    return {...stops[idx-1],distFromPrev:Number.isFinite(km)?km:0,driveMinutes:Number.isFinite(mins)?mins:0};
+  });
+  totalMeters+=distance(prev,0);totalSeconds+=duration(prev,0);
+  return {stops:ordered,distanceKm:totalMeters/1000,durationMin:totalSeconds/60};
+}
+
 // Nearest-neighbour TSP approximation
 // Bounded 2-opt refinement reduces the straight-line round-trip estimate.
 function twoOptImprove(depot, route) {
@@ -8770,27 +8820,39 @@ async function buildRouteOptimizer() {
     await new Promise(r=>setTimeout(r,1100));
   }
 
-  _routeData = [...byDM.entries()].map(([dm, gpsStops]) => {
-    const areaStops = [...fallbackByDM.get(dm).values()].map(stop => {
-      const coords = _areaCoords[stop.area] || null;
-      return {...stop,coords,lat:coords?.lat ?? null,lng:coords?.lng ?? null};
+  _routeData = [];
+  for(const [dm,gpsStops] of [...byDM.entries()]){
+    const areaStops=[...fallbackByDM.get(dm).values()].map(stop=>{
+      const coords=_areaCoords[stop.area]||null;
+      return {...stop,coords,lat:coords?.lat??null,lng:coords?.lng??null};
     });
-    const stops = [...gpsStops,...areaStops.filter(stop => stop.coords && Number.isFinite(Number(stop.lat)) && Number.isFinite(Number(stop.lng)))];
-    const optimized = optimizeRoute(depot,stops);
-    const dist = totalDist(depot,optimized);
-    const allStops = [...gpsStops,...areaStops];
-    const totalOrders = allStops.reduce((sum,stop)=>sum+stop.consumers.length,0);
-    const totalQty = allStops.reduce((sum,stop)=>sum+stop.consumers.reduce((q,c)=>q+(Number(c.qty)||1),0),0);
-    return {
-      dm,optimized,dist:Number.isFinite(dist)?dist.toFixed(1):'0.0',totalOrders,totalQty,
+    const stops=[...gpsStops,...areaStops.filter(stop=>stop.coords&&Number.isFinite(Number(stop.lat))&&Number.isFinite(Number(stop.lng)))];
+    let optimized=optimizeRoute(depot,stops);
+    let dist=totalDist(depot,optimized),routingMethod='straight_line_estimate',driveMinutes=null;
+    const roadMatrix=await fetchRoadTravelMatrix(depot,stops);
+    if(roadMatrix){
+      const road=optimizeRouteWithRoadMatrix(stops,roadMatrix);
+      if(road){optimized=road.stops;dist=road.distanceKm;driveMinutes=road.durationMin;routingMethod='road_network_estimate';}
+      // OSRM demo server asks for no more than one request per second.
+      await new Promise(resolve=>setTimeout(resolve,1200));
+    }
+    const allStops=[...gpsStops,...areaStops];
+    const totalOrders=allStops.reduce((sum,stop)=>sum+stop.consumers.length,0);
+    const totalQty=allStops.reduce((sum,stop)=>sum+stop.consumers.reduce((q,c)=>q+(Number(c.qty)||1),0),0);
+    _routeData.push({
+      dm,optimized,dist:Number.isFinite(dist)?dist.toFixed(1):'0.0',driveMinutes,
+      routingMethod,totalOrders,totalQty,
       noCoords:areaStops.filter(stop=>!stop.coords).map(stop=>stop.area),
       gpsStops:gpsStops.length,areaEstimateStops:areaStops.filter(stop=>!!stop.coords).length
-    };
-  }).sort((a,b)=>b.totalOrders-a.totalOrders);
+    });
+  }
+  _routeData.sort((a,b)=>b.totalOrders-a.totalOrders);
 
-  const totalGps = _routeData.reduce((n,r)=>n+r.gpsStops,0);
-  const totalArea = _routeData.reduce((n,r)=>n+r.areaEstimateStops,0);
-  statusEl.textContent = '✅ Approximate routes prepared for '+_routeData.length+' delivery boys · '+totalGps+' approved customer GPS stops · '+totalArea+' area-estimate stops. Straight-line distance only; not road navigation or yet published to DeliveryApp.';
+  const totalGps=_routeData.reduce((n,r)=>n+r.gpsStops,0);
+  const totalArea=_routeData.reduce((n,r)=>n+r.areaEstimateStops,0);
+  const roadRoutes=_routeData.filter(r=>r.routingMethod==='road_network_estimate').length;
+  const straightRoutes=_routeData.length-roadRoutes;
+  statusEl.textContent='✅ Routes prepared for '+_routeData.length+' delivery boys · '+totalGps+' approved GPS stops · '+totalArea+' area-estimate stops. Road-network optimized: '+roadRoutes+' · straight-line fallback: '+straightRoutes+'. Estimates only; office allocation unchanged.';
   renderRouteMap(depot);
   renderRouteSummaryCards();
   renderRouteTables();
