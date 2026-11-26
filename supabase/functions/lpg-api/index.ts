@@ -679,7 +679,7 @@ Deno.serve(async (req) => {
         const lat=Number(gps?.pin_lat??gps?.lat??temporary?.lat),lng=Number(gps?.pin_lng??gps?.lng??temporary?.lng);
         if(!location||!Number.isFinite(lat)||lat < -90||lat>90||!Number.isFinite(lng)||lng < -180||lng>180)
           return Response.json({error:"Consumer "+stop.consumer_no+" has no office-approved or 3-delivery temporary GPS pin"}, {status:409,headers:cors});
-        routeStops.push({...stop,lat,lng,location_source:gps?"office_approved":"temporary_3_delivery"});
+        routeStops.push({...stop,lat,lng,location_source:gps?(gps.source==="staff_pin"?"office_manual_pin":"office_approved"):"temporary_3_delivery"});
       }
 
       const {data:depot,error:depotError}=await db.from("lpg_locations")
