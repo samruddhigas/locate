@@ -428,7 +428,7 @@ function startCapture(){
   document.getElementById('pinMapPanel').style.display='none';document.getElementById('accMeter').classList.add('visible');
   _watchId=navigator.geolocation.watchPosition(onGPSReading,onGPSError,{enableHighAccuracy:true,timeout:45000,maximumAge:0});
   // Allow Android fused-location/GNSS providers enough time to produce a real fix.
-  // Keep the best fresh reading for up to 25 seconds; do not fail after an arbitrary 3-second window.
+  // Keep the best fresh reading for up to 45 seconds; do not fail after an arbitrary short timeout.
   _captureTimer=setTimeout(()=>{if(_capturing){if(_bestFix)showEntranceMap(_bestFix,true);else{_capturing=false;stopWatch();document.getElementById('accMeter').classList.remove('visible');showError('No GPS reading received within 45 seconds. Check device Location, Chrome permission and Precise location. You can retry without restarting the page.');resetBtn();}}},45000);
 }
 function readingCentre(a){return{lat:a.reduce((s,r)=>s+r.lat,0)/a.length,lng:a.reduce((s,r)=>s+r.lng,0)/a.length};}
@@ -472,7 +472,13 @@ function showEntranceMap(c,allowWeakFix=false){
   document.getElementById('accMeter').classList.remove('visible');document.getElementById('shareBtn').style.display='none';document.getElementById('msgBox').style.display='none';
   const fix=c;
   if(!fix||!Number.isFinite(fix.acc)||fix.acc<=0||fix.acc>1000||(!allowWeakFix&&fix.acc>30)){_captureReady=false;showError('GPS accuracy is not sufficient yet. Try again in an open area.');resetBtn();return;}
-  _bestFix=fix;_readings=[fix];
+  _bestFix=fix;
+  // Preserve the fresh sample series gathered by watchPosition; the entrance pin
+  // is a separate manual adjustment and must not erase the device evidence.
+  _readings=_readings.filter(r=>r&&Number.isFinite(r.lat)&&Number.isFinite(r.lng)&&Number.isFinite(r.acc)&&r.acc>0&&Number.isFinite(r.ts)&&Math.abs(Date.now()-r.ts)<=5*60*1000).slice(-20);
+  if(!_readings.length)_readings=[fix];
+  if(!_readings.some(r=>r.ts===fix.ts&&r.lat===fix.lat&&r.lng===fix.lng))_readings.push(fix);
+  _readings=_readings.slice(-20);
   _rawPosition={lat:fix.lat,lng:fix.lng};_entrancePosition={lat:fix.lat,lng:fix.lng};
   document.getElementById('pinMapPanel').style.display='block';
   if(!window.L){document.getElementById('pinDistance').textContent='Map unavailable; GPS accuracy must be 30 m or better before submitting.';updateEntranceDistance();return;}
@@ -516,7 +522,7 @@ async function submitLocation(){
   const btn=document.getElementById('confirmLocationBtn');
   btn.disabled=true;btn.innerHTML='<span class="loading-spinner"></span><span>Submitting…</span>';
   try{
-    const result=await lpgPublicPost({action:'gps_link_capture',link_token:_linkToken,raw_lat:best.lat,raw_lng:best.lng,pin_lat:_entrancePosition.lat,pin_lng:_entrancePosition.lng,acc:best.acc,readings:[best]});
+    const result=await lpgPublicPost({action:'gps_link_capture',link_token:_linkToken,raw_lat:best.lat,raw_lng:best.lng,pin_lat:_entrancePosition.lat,pin_lng:_entrancePosition.lng,acc:best.acc,readings:_readings.slice(-20)});
     document.querySelector('#successCard .status-title').textContent='Location Received — Verification Pending';
     document.getElementById('successDetail').textContent='Your location has been received and is awaiting agency verification. Thank you. · आपले लोकेशन मिळाले आहे. एजन्सीकडून पडताळणी केली जाईल.';
     if(result.history_saved===false)document.getElementById('successDetail').textContent+=' (Capture history could not be recorded; the location itself was saved.)';
