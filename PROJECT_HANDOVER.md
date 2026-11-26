@@ -721,3 +721,36 @@ No production customer master, delivered-cylinder, pending-booking, or completio
 - GitHub master updated after the source, migration, deployment and test changes.
 - ChatGPT Library reference SAMRUDDHI_LPG_PROJECT_HANDOVER.md was overwritten successfully with the updated section 20 and current release details in the same session.
 - Private repository PROJECT_COMPLETION_STATUS.md was also updated with the v52 offline GPS fix, migration and verification status.
+
+## 21. 26 November 2026 — DeliveryApp GPS false-zero and Mark Done gate
+
+### Issue confirmed from Android screenshot
+- DeliveryApp displayed: “GPS signal is weak (0 m). Delivery can still be saved; GPS will be retried when signal improves.”
+- The zero-metre accuracy is not a valid GPS fix. The 3-second acquisition timeout was too short for a cold GNSS fix and could reject a usable location before the phone had time to settle.
+- The delivery flow explicitly allowed Mark Done to continue after GPS capture failed. This contradicted the required rule that a delivery completion must have a fresh visit GPS observation.
+
+### Source fixes committed
+- Standalone private DeliveryApp repository `samruddhigas/SAMRUDDHI-DELIVERY-APP`:
+  - Commit `d1ea572ae0ae51d75ce9e6a1538e301c7aad897a`: GPS acquisition window increased from 3 seconds to 25 seconds; fresh high-accuracy readings requested with maximumAge 0; zero/invalid accuracy readings rejected; Mark Done now stops unless a valid GPS observation is saved or queued offline.
+  - Commit `af7c2b71187672511cc426c43af458391ddce547`: corrected the user-facing GPS policy notice.
+- Canonical Dashboard embedded DeliveryApp in `samruddhigas/locate/dashboard/index.html`:
+  - Commit `de44ee5dca6ff99d7a33de0234e4f9edd8840ef7`: GPS wait increased from 3 to 25 seconds; cached readings disabled; zero/invalid readings rejected; Mark Done requires a fresh valid GPS fix or a valid offline-queued fix.
+  - Commit `dfa60cc42d99db1303a2d7558fbb476850deecb6`: explicitly clears any previous GPS timestamp before each Mark Done attempt so an older mapping/queued observation cannot satisfy the new visit requirement.
+- Valid offline GPS observations may be queued locally and paired with the offline completion queue. A failed or absent GPS fix must leave the delivery pending and must not mark it done.
+- Existing office allocation, route assignment, consumer data and Supabase records were not intentionally changed by these frontend commits.
+
+### Validation status
+**Implemented in GitHub source**
+- Both standalone and dashboard-embedded DeliveryApp code paths updated.
+- 25-second bounded acquisition, zero-accuracy rejection and mandatory fresh GPS gate implemented in source.
+
+**Not yet verified end-to-end**
+- GitHub Pages deployment of the latest dashboard commit.
+- Actual Android GNSS capture, including cold start, device permission state, accuracy and map interaction.
+- Real delivery completion and offline queue/sync using an assigned production booking.
+- No production consumer, booking, delivery completion or GPS records were changed during this source-only fix.
+
+### Known constraints and user action
+- Android Settings and Chrome must grant Location access with Precise location enabled. This device's precise-location state is not currently available to this session.
+- A 25-second wait improves the opportunity to obtain a fresh fix but cannot guarantee a particular accuracy; handset GNSS and sky visibility still matter.
+- The previous Section 20 statement that GPS acquisition was bounded to 3 seconds and that delivery completion remained possible without GPS is superseded by this Section 21 policy.
