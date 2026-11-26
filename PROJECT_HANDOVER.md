@@ -936,3 +936,55 @@ No production customer master, delivered-cylinder, pending-booking, or completio
 
 - Office map audit: the existing GPS approval map plots all coordinate-bearing pending submissions and all approved consumer pins (pending orange, approved green). The office route overview map plots each optimized GPS stop plus the depot. These views were already present and were retained; the static regression validator now checks both loops so future changes do not silently remove the all-pins views.
 - Validator map-view regression assertions committed in `9e27651940cd40c05aa685775cfbf7b7c2d3ff1f`.
+
+## 23. 26 November 2026 — Alternative location methods and road-aware route planning
+
+### User-reported failure
+- User reported the delivery message: "GPS signal is weak (0 m). Delivery can still be saved; GPS will be retried when signal improves."
+- Exact message is not present in the current canonical standalone DeliveryApp, embedded Dashboard DeliveryApp or consumer location page source. It appears in older handover text, so an older hosted/cached copy is a likely cause; this is not yet proven because the live GitHub Pages assets could not be fetched for direct comparison.
+- DeliveryApp service-worker cache advanced from v18 to v19 so installed PWA clients can replace stale cached assets. Executable app scripts remain network-first.
+
+### Native Android location path added
+- Added `android-location/` Android project that wraps the existing standalone DeliveryApp URL in a WebView.
+- Uses Google Play services `FusedLocationProviderClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, ...)` as an additional native Android source, in parallel with browser `watchPosition` and `getCurrentPosition`.
+- Native bridge returns raw latitude, longitude, reported accuracy and timestamp to the same DeliveryApp validation path. It does not fabricate GPS accuracy or bypass the existing 1–30 m server requirement.
+- Requests Android fine/precise location permission; the app cannot override a device configured for approximate-only location.
+- No Maps API key or Supabase service key is embedded in the Android project.
+- Android project notes: `android-location/README.md`.
+- Build workflow: `.github/workflows/build-native-delivery-android.yml`. It builds a debug APK and uploads it as a GitHub Actions artifact. The workflow has been committed, but no completed build run/artifact was visible during this audit. APK build and physical-phone testing remain pending.
+- Relevant commits:
+  - Android project files: `4eb2fb2e6292f592d064fed3738ec16d6ad3b9ba`, `0d5362c5982f87fa3e49a9ef62417ac455629192`, `88f93595df789bd497afef519a81d0aff24537b3`, `3cb1fd5da51fabf9c1e787e9c3a20dd87e9060e2`, `2a5e3ca7d2d3e9bb9ad59af8f1626b3dc7a3b6b8`, `7cc415f921685c2ab416771456eb4f89560ed19e`.
+  - Native bridge integration: standalone `8cf108ea3f7c199495e3e314a4914eb5a4258b7d`, embedded Dashboard `058bddabceb043c5453b8880448fca84f8635dea`.
+  - Permission/callback hardening: `391840d294a8f800965d76154accd4ae91d6079f`, `bffd6d4a7c6e1b9c7451de28d9e12cc6b26f8024`.
+  - Build workflow: `54e9c0325bc4130db511c77b7ad9a8b6dc575915`.
+  - Cache v19: `46adb56c205353323a3a95c387c1f86cecb59e5a`.
+
+### Alternative location method for consumers and office
+- Office consumer pin editor now has Road map and Satellite layers.
+- When a consumer has no saved pin, the editor attempts to geocode the consumer's stored postal address and area, then places a starting marker. Staff must drag/adjust and confirm the exact entrance; the address geocode is an estimate, not a device GPS fix.
+- Office manual entrance pins are stored with source `staff_pin` and sentinel accuracy `10000`, explicitly identifying that no device GPS accuracy was measured. Dashboard detail, approval map, search and table labels say "Office manual pin" rather than a fake ±5 m GPS accuracy.
+- Office-approved manual entrance pins are eligible route coordinates, but remain distinguishable from measured GPS and temporary 3-delivery location evidence.
+- Relevant commits: `3ef48ffebabb9dfdfe44f39e503351aba24b52b9`, `855483da412ffc8db412cdd5c9978161881a8c79`, `2b29d392bd7fb5944b24146d692e601430a2b984`.
+
+### Alternative road-aware route optimization
+- The office route optimizer still groups stops by the existing fixed delivery-man assignment; no booking is transferred or reallocated.
+- It now requests a road-network distance/time matrix for each delivery man's route (up to 40 stops), uses nearest-neighbour plus 2-opt against estimated road travel time, and draws the returned road geometry on the office map when available.
+- When the routing service fails or the stop count exceeds the supported limit, the existing straight-line optimizer remains the fallback. The dashboard reports which method was used.
+- Current road matrix/geometry provider is the public OSRM demo endpoint. It is best-effort only, rate-limited to one request per second, and has no uptime or service guarantee. Do not treat it as a permanent production SLA; replace it with a dedicated routing provider or self-hosted OSRM before depending on it for critical daily dispatch.
+- The published route remains an office-controlled sequence. Server-reported route distance is still a straight-line estimate; the dashboard now labels it as such.
+- Relevant commits: `422eeb795ff86df53198c4930eeb427be620831a` (route matrix/order), `bbbb7c7942b0706fd5f8c4930eeb427be620831a` (road geometry/timeout), `c03e9b66cd23e5add723ea2268cb0f8263de2834` (summary labels).
+
+### Backend and route-source integrity
+- Published route stops now record `office_manual_pin` distinctly when sourced from a manually placed staff pin; no booking allocation rules changed.
+- Updated Edge Function `lpg-api` deployed to the required Supabase project `uggqsvgxjhvdfkddqzyh`, version 54. Deployed `index.ts` was re-fetched and compared exactly with canonical GitHub source after deployment.
+- Backend route-source commit: `ddd3e9c4f73c0ff021746721b3a16ce0c140c370`.
+- Regression validator now checks native Android fused-location bridge and road-routing fallback:
+  - `7e4d83f57063dd7754a42f9ed301a31d01d352ee`
+  - `4489dff43bf07c663a4da59cab017e90cadd16c5`.
+
+### Synchronization and validation
+- Standalone DeliveryApp canonical and mirror source files were compared. app.js and index.html were already identical; service worker v19 was synchronized to the mirror.
+- JavaScript syntax parsing was run against standalone app.js, service worker, inline Dashboard scripts and consumer scripts after the latest changes; all parsed successfully.
+- Live Supabase Edge Function version 54 matches the repository source exactly.
+- Not yet verified: native Android Gradle build result, APK installation, Android Fused Location Provider accuracy on a physical phone, live GitHub Pages cache replacement, real address-geocoding quality for Katol addresses, and road-routing service reliability in daily use.
+- Road-network routing through OSRM demo is a temporary best-effort option only. A dedicated provider/self-hosted engine is required for dependable production routing.
