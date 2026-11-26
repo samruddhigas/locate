@@ -6319,7 +6319,10 @@ async function markDone(id) {
   if (!d.consumerNo || !(d.orderNo || d.id)) { toast('⚠️ Booking details incomplete · refresh from office','#b45309'); return; }
   // Every delivery needs a fresh visit reading. Never reuse an earlier mapping pin
   // as proof of where today's cylinder was handed over.
-  await captureDeliveryGPS(d, 'delivery_after_mark_delivered');
+  const gpsCaptured=await captureDeliveryGPS(d, 'delivery_after_mark_delivered');
+  // Require a fresh valid visit GPS fix before completion. A valid fix queued
+  // locally while offline is acceptable; a missing fix is not.
+  if(!gpsCaptured&&d.gpsAt!=='queued'){toast('⚠️ Delivery NOT marked done · valid GPS (1–30 m) is required. Enable Precise location and retry.','#b45309');return;}
   const record={booking_key:String(d.orderNo||d.id||''),consumer_no:String(d.consumerNo||''),qty:Math.max(1,Number(d.qty)||1),completed_at:new Date().toISOString()};
   try{
     if(!navigator.onLine)throw new Error('OFFLINE_QUEUE');
@@ -6432,13 +6435,13 @@ async function captureDeliveryGPS(d, captureMode='delivery_after_mark_delivered'
     const best = warmFix||await new Promise((resolve,reject)=>{
       let watch=null,timer=null,bestFix=null,finished=false;
       const finish=err=>{if(finished)return;finished=true;if(watch!==null)navigator.geolocation.clearWatch(watch);if(timer!==null)clearTimeout(timer);if(err)reject(err);else resolve(bestFix);};
-      timer=setTimeout(()=>finish(bestFix&&bestFix.acc<=30?null:new Error('GPS accuracy is '+Math.round(bestFix?.acc||0)+' m. Need 30 m or better; retry in a more open place.')),3000);
+      timer=setTimeout(()=>finish(bestFix&&bestFix.acc>0&&bestFix.acc<=30?null:new Error('No reliable GPS fix received within 25 seconds. Delivery was NOT marked done. Enable Precise location, wait in an open area, and retry.')),25000);
       try { watch=navigator.geolocation.watchPosition(pos=>{
         const c=pos.coords,acc=Number(c.accuracy);if(!Number.isFinite(acc)||acc<=0||acc>1000)return;
         const fix={lat:Number(c.latitude),lng:Number(c.longitude),acc,ts:Number(pos.timestamp)||Date.now()};
         if(!Number.isFinite(fix.lat)||!Number.isFinite(fix.lng)||Date.now()-fix.ts>10000)return;
         if(!bestFix||fix.acc<bestFix.acc)bestFix=fix;if(bestFix.acc<=10)finish();
-      },err=>{if(err.code===1)finish(new Error('Location permission denied. Allow precise location for this app.'));},{enableHighAccuracy:true,maximumAge:5000,timeout:8000});}
+      },err=>{if(err.code===1)finish(new Error('Location permission denied. Allow precise location for this app.'));},{enableHighAccuracy:true,maximumAge:0,timeout:25000});}
       catch(e){finish(e);}
     });
     if(!best||best.acc>30)throw new Error('Best GPS accuracy was '+Math.round(best?.acc||0)+' m. Need 30 m or better.');
