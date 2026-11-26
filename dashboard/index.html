@@ -6450,38 +6450,28 @@ async function captureDeliveryGPS(d, captureMode='delivery_after_mark_delivered'
       },err=>{if(err.code===1)finish(new Error('Location permission denied. Allow precise location for this app.'));},{enableHighAccuracy:true,maximumAge:0,timeout:25000});}
       catch(e){finish(e);}
     });
-    if(!best||best.acc>30)throw new Error('Best GPS accuracy was '+Math.round(best?.acc||0)+' m. Need 30 m or better.');
-    // Mark Done uses the fresh GPS fix immediately; do not stop the delivery flow
-    // for a map confirmation. The interactive entrance map remains for manual mapping.
-    const payload={booking_key:String(d.orderNo||d.id||''),consumer_no:String(d.consumerNo),
-      raw_lat:best.lat,raw_lng:best.lng,pin_lat:best.lat,pin_lng:best.lng,
-      lat:best.lat,lng:best.lng,acc:best.acc,
-      readings:[{lat:best.lat,lng:best.lng,acc:best.acc,ts:best.ts}],capture_mode:captureMode};
-    try{
-      await newProjectApiPost({action:'gps_capture',...payload},DELIVERY_SESSION_TOKEN);
-      d.lat=best.lat;d.lng=best.lng;d.gpsAt=new Date().toISOString();d.gpsAccuracy=best.acc;save();updateStats();
-      toast('📍 Delivery GPS captured · ±'+Math.round(best.acc)+' m');return true;
-    }catch(saveError){
-      if(!navigator.onLine||/failed to fetch|networkerror|load failed/i.test(saveError.message||'')){
-        APP.pendingGps=Array.isArray(APP.pendingGps)?APP.pendingGps:[];
-        if(!APP.pendingGps.some(x=>String(x.booking_key||'')===payload.booking_key&&String(x.consumer_no)===payload.consumer_no))APP.pendingGps.push(payload);
-        d.lat=best.lat;d.lng=best.lng;d.gpsAt='queued';d.gpsAccuracy=best.acc;save();
-        toast('📍 Delivery GPS queued · ±'+Math.round(best.acc)+' m','#b45309');return false;
-      }
-      throw saveError;
+    if(!best||!Number.isFinite(best.acc)||best.acc<=0||best.acc>1000)throw new Error('No valid GPS coordinates received. Keep Location enabled and retry.');
+    // All capture paths open the same draggable entrance map. Weak readings can
+    // be viewed, but the map's Confirm button remains disabled above 30 m.
+    _deliveryGpsCurrent=d;_deliveryGpsBest=best;_deliveryGpsSamples=[best];_deliveryGpsCaptureMode=captureMode;
+    const pinConfirmed=await new Promise(resolve=>{_deliveryGpsPinResolve=resolve;showDeliveryGpsPin(d,best);});
+    if(!pinConfirmed){
+      if(d.gpsAt!=='queued')toast('⚠️ Location not saved · confirm a pin with GPS accuracy <=30 m','#b45309');
+      return false;
     }
+    return true;
   } catch(e) { toast('⚠️ GPS not captured · '+(e.message||'try again'),'#b45309'); return false; }
 }
 function showDeliveryGpsPin(d,best){
-  if(!window.L){toast('⚠️ Map unavailable · GPS not submitted','#b45309');return;}
+  if(!window.L){toast('⚠️ Map unavailable · GPS not submitted','#b45309');const done=_deliveryGpsPinResolve;_deliveryGpsPinResolve=null;if(done)done(false);return;}
   document.getElementById('deliveryGpsPinConsumer').textContent=(d.consumerName||'Customer')+' · '+d.consumerNo;
   document.getElementById('deliveryGpsPinAccuracy').textContent='±'+best.acc.toFixed(1)+' m';
   document.getElementById('deliveryGpsPinOverlay').classList.add('open');
-  if(!_deliveryGpsMap){_deliveryGpsMap=L.map('deliveryGpsPinMap',{zoomControl:true}).setView([best.lat,best.lng],20);_deliveryGpsStreet=L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',{maxZoom:22,attribution:'© OpenStreetMap contributors © CARTO'});_deliveryGpsSatellite=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Tiles © Esri'});_deliveryGpsSatellite.addTo(_deliveryGpsMap);}else _deliveryGpsMap.setView([best.lat,best.lng],20);
+  if(!_deliveryGpsMap){_deliveryGpsMap=L.map('deliveryGpsPinMap',{zoomControl:true}).setView([best.lat,best.lng],20);_deliveryGpsStreet=L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',{maxZoom:22,attribution:'© OpenStreetMap contributors © CARTO'});_deliveryGpsSatellite=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Tiles © Esri'});_deliveryGpsStreet.addTo(_deliveryGpsMap);_deliveryGpsLayer='street';}else _deliveryGpsMap.setView([best.lat,best.lng],20);
   if(_deliveryGpsMarker)_deliveryGpsMarker.remove();_deliveryGpsMarker=L.marker([best.lat,best.lng],{draggable:true}).addTo(_deliveryGpsMap);
-  const updatePin=()=>{const p=_deliveryGpsMarker.getLatLng(),offset=deliveryGpsDistance(best.lat,best.lng,p.lat,p.lng);document.getElementById('deliveryGpsPinCoords').textContent='Entrance pin offset: '+Math.round(offset)+' m from GPS'+(offset>500?' · Move within 500 m':'');document.getElementById('deliveryGpsPinSave').disabled=offset>500;};
+  const updatePin=()=>{const p=_deliveryGpsMarker.getLatLng(),offset=deliveryGpsDistance(best.lat,best.lng,p.lat,p.lng),accuracyOk=Number.isFinite(best.acc)&&best.acc>0&&best.acc<=30;document.getElementById('deliveryGpsPinCoords').textContent='Entrance pin offset: '+Math.round(offset)+' m from GPS'+(offset>500?' · Move within 500 m':'')+(!accuracyOk?' · GPS accuracy must be 30 m or better before saving':'');document.getElementById('deliveryGpsPinSave').disabled=offset>500||!accuracyOk;};
   _deliveryGpsMarker.on('dragend',updatePin);_deliveryGpsMap.off('click');_deliveryGpsMap.on('click',e=>{_deliveryGpsMarker.setLatLng(e.latlng);updatePin();});
-  document.getElementById('deliveryGpsPinCoords').textContent='Drag the pin or tap the map to place it on the main entrance.';updatePin();setTimeout(()=>_deliveryGpsMap.invalidateSize(),180);
+  document.getElementById('deliveryGpsPinCoords').textContent='Drag the pin or tap the map to place it on the main entrance.';updatePin();requestAnimationFrame(()=>_deliveryGpsMap&&_deliveryGpsMap.invalidateSize(true));setTimeout(()=>_deliveryGpsMap&&_deliveryGpsMap.invalidateSize(true),180);setTimeout(()=>_deliveryGpsMap&&_deliveryGpsMap.invalidateSize(true),650);
 }
 function setDeliveryGpsLayer(which){if(!_deliveryGpsMap)return;if(_deliveryGpsLayer==='street')_deliveryGpsMap.removeLayer(_deliveryGpsStreet);if(_deliveryGpsLayer==='satellite')_deliveryGpsMap.removeLayer(_deliveryGpsSatellite);_deliveryGpsLayer=which;(_deliveryGpsLayer==='street'?_deliveryGpsStreet:_deliveryGpsSatellite).addTo(_deliveryGpsMap);}
 async function saveDeliveryGpsPin(){
