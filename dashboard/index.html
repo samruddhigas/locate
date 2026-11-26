@@ -8718,8 +8718,8 @@ async function fetchRoadRouteGeometry(depot,stops){
 function optimizeRouteWithRoadMatrix(stops,matrix){
   if(!stops.length)return {stops:[],distanceKm:0,durationMin:0};
   const n=stops.length;
-  const duration=(a,b)=>Number(matrix.durations[a]?.[b]??Infinity);
-  const distance=(a,b)=>Number(matrix.distances[a]?.[b]??Infinity);
+  const duration=(a,b)=>matrix.durations[a]?.[b]==null?Infinity:Number(matrix.durations[a][b]);
+  const distance=(a,b)=>matrix.distances[a]?.[b]==null?Infinity:Number(matrix.distances[a][b]);
   const route=[],remaining=new Set(Array.from({length:n},(_,i)=>i+1));
   let current=0;
   while(remaining.size){
