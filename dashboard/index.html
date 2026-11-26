@@ -5444,7 +5444,7 @@ function buildLocationSection(cno) {
         <span>📍 Location</span>${statusBadge}
       </div>
       ${pRow('Coordinates', src.lat ? `${(src.lat).toFixed(6)}, ${(src.lng).toFixed(6)}` : '—')}
-      ${pRow('Accuracy', src.acc ? `±${Math.round(src.acc)}m` : '—')}
+      ${pRow('Accuracy', src.source==='staff_pin' ? 'Office-placed pin (manual; not device GPS)' : (src.acc ? `±${Math.round(src.acc)}m` : '—'))}
       ${pRow('Readings', (src.count||1)+' GPS readings averaged')}
       ${pRow('Captured by', (()=>{const s=src.source||'';if(s==='consumer_link_pinned'||s==='consumer_link') return '📱 Consumer (self-pinned)';if(s==='delivery_app_pin') return '🛵 Delivery man (first visit)';if(s==='delivery_app') return '🛵 Delivery man (auto-GPS)';if(s==='staff_pin') return '🖥️ Staff/Admin (manual pin)';return s||'—';})())}
       ${hasApproved ? pRow('Approved', new Date(g.capturedAt||'').toLocaleDateString('en-IN')) : ''}
@@ -6643,7 +6643,7 @@ function generateDeliveryApp(dmName) {
   const knownGPS = {};
   deliveries.forEach(p => {
     const g = STATE.consumerGPS[p.consumerNo];
-    if (g && g.lat && g.lng) knownGPS[p.consumerNo] = { lat:g.lat, lng:g.lng, acc:g.acc||3, status:g.status||'approved' };
+    if (g && g.lat && g.lng) knownGPS[p.consumerNo] = { lat:g.lat, lng:g.lng, acc:g.source==='staff_pin'?null:(g.acc||3), source:g.source||'device_gps', status:g.status||'approved' };
   });
 
   const data = {
@@ -7577,7 +7577,7 @@ async function searchGpsConsumers() {
 
   resultsEl.innerHTML = filtered.map(r => {
     const statusColor = r.status === 'approved' ? 'var(--green)' : 'var(--orange)';
-    const acc = r.acc ? `±${Math.round(r.acc)}m` : '—';
+    const acc = r.source==='staff_pin' ? 'Office manual pin' : (r.acc ? `±${Math.round(r.acc)}m` : '—');
     const date = r.captured_at ? new Date(r.captured_at).toLocaleDateString('en-IN') : '—';
     return `
       <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface);border-radius:8px;border:1px solid var(--border)">
@@ -9401,7 +9401,7 @@ function renderApprovalMap() {
       L.marker([sub.lat, sub.lng], { icon })
         .addTo(_apprvMap)
         .bindPopup(`<b>${escHtml(sub.consumerName||cno)}</b><br>${escHtml(sub.area||'')}<br>
-          📡 ${sub.count||1} readings · ±${Math.round(sub.acc||10)}m<br>
+          📡 ${sub.source==='staff_pin'?'Office-placed manual pin':((sub.count||1)+' readings · ±'+Math.round(sub.acc||10)+'m')}<br>
           by ${escHtml(sub.dmName||'—')}<br>
           <button data-review-gps="${escAttr(cno)}" data-review-approved="false" onclick="openApprovalDetail(this.dataset.reviewGps,false)" style="margin-top:6px;padding:5px 12px;background:#f39c12;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">Review & Approve</button>`)
         .on('popupopen', e => { const b=e.popup.getElement()?.querySelector('[data-review-gps]'); if(b) b.addEventListener('click',()=>openApprovalDetail(b.dataset.reviewGps,false)); })
@@ -9420,7 +9420,7 @@ function renderApprovalMap() {
       const name = lookupConsumerName(cno) || cno;
       L.marker([g.lat, g.lng], { icon })
         .addTo(_apprvMap)
-        .bindPopup(`<b>✅ ${escHtml(name)}</b><br>±${Math.round(g.acc||3)}m · Approved<br>
+        .bindPopup(`<b>✅ ${escHtml(name)}</b><br>${g.source==='staff_pin'?'Office-placed manual pin · Approved':'±'+Math.round(g.acc||3)+'m · Approved'}<br>
           <button data-review-gps="${escAttr(cno)}" data-review-approved="true" onclick="openApprovalDetail(this.dataset.reviewGps,true)" style="margin-top:5px;padding:4px 10px;background:#2ecc71;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:11px;">Edit / Re-approve</button>`)
         .on('popupopen', e => { const b=e.popup.getElement()?.querySelector('[data-review-gps]'); if(b) b.addEventListener('click',()=>openApprovalDetail(b.dataset.reviewGps,true)); });
       bounds.push([g.lat, g.lng]);
@@ -9486,7 +9486,7 @@ function renderApprovalTable(filter) {
         <td style="padding:9px 6px;font-weight:600;color:var(--text);">${escHtml(r.consumerName||r.cno)}<br><span style="font-size:10px;color:var(--text3);">${escHtml(r.cno)}</span></td>
         <td style="padding:9px 6px;color:var(--text2);">${escHtml(r.area||'—')}</td>
         <td style="padding:9px 6px;text-align:center;color:var(--blue);">${r.count||1}</td>
-        <td style="padding:9px 6px;text-align:center;color:${(r.acc||99)<=5?'var(--green)':(r.acc||99)<=15?'var(--orange)':'var(--red)'};">±${Math.round(r.acc||10)}m</td>
+        <td style="padding:9px 6px;text-align:center;color:${r.source==='staff_pin'?'var(--text2)':((r.acc||99)<=5?'var(--green)':(r.acc||99)<=15?'var(--orange)':'var(--red)')};">${r.source==='staff_pin'?'Office manual pin':'±'+Math.round(r.acc||10)+'m'}</td>
         <td style="padding:9px 6px;">${statusHtml}${r.dmName?`<br><span style="font-size:10px;color:var(--text3);">${escHtml(r.dmName)}</span>`:''}</td>
         <td style="padding:9px 6px;text-align:center;">
           <button data-approval-cno="${escAttr(r.cno)}" data-approval-status="${!isPending}" onclick="openApprovalDetail(this.dataset.approvalCno,this.dataset.approvalStatus==='true')" style="padding:5px 12px;border-radius:6px;border:none;font-size:11px;font-weight:700;cursor:pointer;background:${isPending?'var(--orange)':'var(--surface)'};color:${isPending?'#fff':'var(--text2)'};border:1px solid var(--border);">
