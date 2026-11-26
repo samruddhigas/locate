@@ -988,3 +988,17 @@ No production customer master, delivered-cylinder, pending-booking, or completio
 - Live Supabase Edge Function version 54 matches the repository source exactly.
 - Not yet verified: native Android Gradle build result, APK installation, Android Fused Location Provider accuracy on a physical phone, live GitHub Pages cache replacement, real address-geocoding quality for Katol addresses, and road-routing service reliability in daily use.
 - Road-network routing through OSRM demo is a temporary best-effort option only. A dedicated provider/self-hosted engine is required for dependable production routing.
+
+### Section 23 addendum — Final safeguards and private mirror
+- Road matrix null/unreachable cells are now treated as infinite cost (not zero), preventing the optimizer from preferring disconnected road segments:
+  - `9497177551a1854ba50507b3f09c5445779c1321`.
+- Office manual pins no longer display a misleading GPS accuracy circle; the map uses a distinct purple marker and a clear manual-pin label:
+  - `6d9398f8572cda0ab7ffef1f38d4549a6dada53f`.
+- Private DeliveryApp repository also contains the native Android wrapper project and build workflow:
+  - settings `f07f801d7f435538f969304c9d2c84ac918bc6d3`
+  - build files `669d581d1e3f7d24ddde80918dbf4e254fab19b7`, `1a69538566cb27920f91c530c5137d9051d6ca68`, `a2badd69a35ca03041daa1c2dd419e36aa4620d2`
+  - manifest `8718965f80d0b63ba9b7777d3c23924413880797`
+  - native bridge `aa22bbf3a67be4dc81767613e457f81c984aa9b9`
+  - README `6915d35a0c0dc57fb24b0672cf8f969cb19cb3b7`
+  - APK workflow `3f30bd9ba7bf74e6dfdef1e79452e98c2bda2e58`.
+- JavaScript syntax checks re-run after the final Dashboard changes: standalone app.js, service worker, two Dashboard inline scripts and consumer inline script all parse successfully.
