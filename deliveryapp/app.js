@@ -64,7 +64,8 @@ function startGPSWatch(){
    const c=pos.coords,acc=Number(c.accuracy),ts=Number(pos.timestamp)||Date.now();
    if(!Number.isFinite(acc)||acc<=0||acc>1000||Date.now()-ts>15000)return;
    const fix={lat:Number(c.latitude),lng:Number(c.longitude),acc,ts};
-   if(Number.isFinite(fix.lat)&&Number.isFinite(fix.lng)&&(! _gpsFix||fix.acc<=_gpsFix.acc||Date.now()-_gpsFix.ts>10000))_gpsFix=fix;
+   if(Number.isFinite(fix.lat)&&fix.lat>=-90&&fix.lat<=90&&Number.isFinite(fix.lng)&&fix.lng>=-180&&fix.lng<=180&&
+      ts<=Date.now()+5000&&Date.now()-ts<=10000&&(!_gpsFix||fix.acc<=_gpsFix.acc||Date.now()-_gpsFix.ts>10000))_gpsFix=fix;
   },()=>{}, {enableHighAccuracy:true,maximumAge:3000,timeout:12000});
  }catch(_){_gpsWatchId=null;}
 }
@@ -193,29 +194,32 @@ async function captureGps(r,button,captureMode='delivery_initial_mapping',option
   // while the delivery person is moving, averaging would place the customer between locations.
   // Reuse the continuously warmed GNSS fix whenever it is recent and sufficiently accurate.
   // This removes the per-delivery cold-start delay without pretending a weak fix is precise.
-  const warmFix=(_gpsFix&&Number.isFinite(Number(_gpsFix.lat))&&Number.isFinite(Number(_gpsFix.lng))&&
-   Number(_gpsFix.acc)>0&&Number(_gpsFix.acc)<=10&&Date.now()-Number(_gpsFix.ts||0)<=10000)
+  const warmFix=captureMode!=='delivery_after_mark_delivered'&&_gpsFix&&
+   Number.isFinite(Number(_gpsFix.lat))&&Number(_gpsFix.lat)>=-90&&Number(_gpsFix.lat)<=90&&
+   Number.isFinite(Number(_gpsFix.lng))&&Number(_gpsFix.lng)>=-180&&Number(_gpsFix.lng)<=180&&
+   Number(_gpsFix.acc)>0&&Number(_gpsFix.acc)<=10&&Date.now()-Number(_gpsFix.ts||0)<=5000
    ?{lat:Number(_gpsFix.lat),lng:Number(_gpsFix.lng),acc:Number(_gpsFix.acc),ts:Number(_gpsFix.ts)}:null;
   const best=warmFix||await new Promise((resolve,reject)=>{
-   let watchId=null,deadline=null,bestFix=null,finished=false;
+   let watchId=null,deadline=null,bestFix=null,finished=false,startedAt=Date.now();
    const finish=(err)=>{
     if(finished)return;finished=true;
     if(watchId!==null)navigator.geolocation.clearWatch(watchId);
     if(deadline!==null)clearTimeout(deadline);
     if(err)reject(err);else resolve(bestFix);
    };
-   deadline=setTimeout(()=>finish(bestFix&&bestFix.acc>0&&bestFix.acc<=30?null:new Error('No reliable GPS fix received within 25 seconds. Delivery was NOT marked done. Enable Android and Chrome Precise location, then retry.')),25000);
+   deadline=setTimeout(()=>finish(bestFix&&bestFix.acc>0&&bestFix.acc<=30?null:new Error('No reliable GPS fix received within 30 seconds. Delivery was NOT marked done. Check Android and Chrome location permissions, then retry.')),30000);
    try{
     watchId=navigator.geolocation.watchPosition(pos=>{
      const c=pos.coords,acc=Number(c.accuracy);
      if(!Number.isFinite(acc)||acc<=0||acc>1000)return;
      const fix={lat:Number(c.latitude),lng:Number(c.longitude),acc,ts:Number(pos.timestamp)||Date.now()};
-     if(!Number.isFinite(fix.lat)||!Number.isFinite(fix.lng)||Date.now()-fix.ts>10000)return;
+     if(!Number.isFinite(fix.lat)||fix.lat < -90||fix.lat > 90||!Number.isFinite(fix.lng)||fix.lng < -180||fix.lng > 180||
+        fix.ts>Date.now()+5000||Date.now()-fix.ts>10000)return;
      if(!bestFix||fix.acc<bestFix.acc)bestFix=fix;
      button.textContent='Best GPS '+Math.round(bestFix.acc)+' m…';
      if(status)status.textContent='Improving GPS fix · best so far '+Math.round(bestFix.acc)+' m';
-     // Stop as soon as the phone supplies a genuinely good fix.
-     if(bestFix.acc<=10)finish();
+     // Wait briefly after the first good fix so the phone can refine it.
+     if(bestFix.acc<=10&&Date.now()-startedAt>=5000)finish();
     },err=>{
      if(err.code===1)finish(new Error('Location permission denied. Allow precise location for this app.'));else if(status)status.textContent='Waiting for GPS signal…';
     },{enableHighAccuracy:true,timeout:25000,maximumAge:0});
