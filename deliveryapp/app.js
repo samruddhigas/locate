@@ -208,7 +208,7 @@ async function captureGps(r,button,captureMode='delivery_initial_mapping',option
     if(deadline!==null)clearTimeout(deadline);
     if(err)reject(err);else resolve(bestFix);
    };
-   deadline=setTimeout(()=>finish(bestFix&&bestFix.acc>0&&bestFix.acc<=30?null:new Error('No reliable GPS fix received within 30 seconds. Delivery was NOT marked done. Check Android and Chrome location permissions, then retry.')),30000);
+   deadline=setTimeout(()=>finish(bestFix&&bestFix.acc>0&&bestFix.acc<=1000?null:new Error('No GPS coordinates received within 30 seconds. Delivery was NOT marked done. Check Android and Chrome location permissions, then retry.')),30000);
    try{
     watchId=navigator.geolocation.watchPosition(pos=>{
      const c=pos.coords,acc=Number(c.accuracy);
