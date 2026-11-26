@@ -182,6 +182,7 @@ function chooseGpsPin(r,best){
    $('pinPickerStreet').onclick=()=>{if(layer!=='street'){map.removeLayer(satellite);street.addTo(map);layer='street';}};
    $('pinPickerSatellite').onclick=()=>{if(layer!=='satellite'){map.removeLayer(street);satellite.addTo(map);layer='satellite';}};
    $('pinPickerClose').onclick=()=>finish(null);$('pinPickerCancel').onclick=()=>finish(null);
+   $('pinPickerRetry').onclick=()=>finish({retry:true});
    $('pinPickerConfirm').onclick=()=>{const p=marker.getLatLng();finish({lat:p.lat,lng:p.lng});};
    update();setTimeout(()=>map&&map.invalidateSize(),180);
   }catch(e){finish(null);}
@@ -237,6 +238,7 @@ async function captureGps(r,button,captureMode='delivery_initial_mapping',option
   // Every GPS capture, including Mark Done, requires an entrance-map pin confirmation.
   // Weak fixes may be inspected on-map, but saving stays disabled until accuracy is <=30 m.
   const selected=await chooseGpsPin(r,best);
+  if(selected?.retry){if(status)status.textContent='Refreshing GPS…';return await captureGps(r,button,captureMode,options);}
   if(!selected){if(status)status.textContent='Map selection cancelled or GPS accuracy is above 30 m. No location was submitted.';button.textContent='Capture GPS again';return {saved:false,message:'Pin confirmation unavailable. GPS accuracy must be 30 m or better.'};}
   pin=selected;
   const payload={booking_key:String(r.booking||''),consumer_no:r.consumer,raw_lat:best.lat,raw_lng:best.lng,pin_lat:pin.lat,pin_lng:pin.lng,lat:pin.lat,lng:pin.lng,acc:accuracy,
