@@ -6427,6 +6427,18 @@ async function searchGpsOnlyConsumers(){
     });
   }catch(e){box.textContent=e.message||'Consumer search failed.';}
 }
+window.__nativeGpsCallbacks=window.__nativeGpsCallbacks||{};
+function requestDeliveryNativeGps(onPosition,onError){
+ if(!window.AndroidLocation||typeof window.AndroidLocation.getCurrentLocation!=='function')return false;
+ const id='native_'+Date.now()+'_'+Math.random().toString(36).slice(2,10);
+ window.__nativeGpsCallbacks[id]=(lat,lng,acc,ts,error)=>{
+  delete window.__nativeGpsCallbacks[id];
+  if(error){onError({code:2,message:String(error)});return;}
+  onPosition({coords:{latitude:Number(lat),longitude:Number(lng),accuracy:Number(acc)},timestamp:Number(ts)||Date.now()});
+ };
+ try{window.AndroidLocation.getCurrentLocation(id);setTimeout(()=>{delete window.__nativeGpsCallbacks[id]},35000);return true;}
+ catch(e){delete window.__nativeGpsCallbacks[id];onError({code:2,message:e.message||'Native Android GPS request failed'});return false;}
+}
 async function captureDeliveryGPS(d, captureMode='delivery_after_mark_delivered') {
   if (!navigator.geolocation || !d?.consumerNo) { toast('⚠️ Location permission or GPS unavailable','#b45309'); return false; }
   toast('📍 Finding best GPS fix…','#2563eb');
@@ -6453,6 +6465,8 @@ async function captureDeliveryGPS(d, captureMode='delivery_after_mark_delivered'
       try {
         const gpsOptions={enableHighAccuracy:true,maximumAge:0,timeout:25000};
         watch=navigator.geolocation.watchPosition(acceptPosition,acceptError,gpsOptions);
+        // Native Android wrapper uses Google Play services Fused Location Provider.
+        requestDeliveryNativeGps(acceptPosition,acceptError);
         // Parallel one-shot request works as a fallback when Android Chrome's
         // continuous watcher is slow to produce its first fix.
         navigator.geolocation.getCurrentPosition(acceptPosition,acceptError,{enableHighAccuracy:true,maximumAge:0,timeout:20000});
