@@ -190,6 +190,8 @@ delivery_js_path = ROOT / "deliveryapp" / "app.js"
 delivery_js_source = delivery_js_path.read_text(encoding="utf-8") if delivery_js_path.exists() else ""
 api_path = ROOT / "supabase" / "functions" / "lpg-api" / "index.ts"
 api_source = api_path.read_text(encoding="utf-8") if api_path.exists() else ""
+native_android_path = ROOT / "android-location" / "app" / "src" / "main" / "java" / "in" / "samruddhigas" / "delivery" / "MainActivity.kt"
+native_android_source = native_android_path.read_text(encoding="utf-8") if native_android_path.exists() else ""
 gps_migration = ROOT / "supabase" / "migrations" / "20261126061457_gps_capture_integrity_and_required_delivery_visit_fix.sql"
 gps_checks = [
     ("consumer GPS watch uses fresh high-accuracy readings", "timeout:45000,maximumAge:0" in consumer_source),
