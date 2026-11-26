@@ -86,6 +86,8 @@ async function completeBooking(r,key,button){
  const gpsResult=await captureGps(r,button,'delivery_after_mark_delivered',{silent:true});
  gpsSaved=!!gpsResult?.saved;
  gpsMessage=gpsResult?.message||'';
+ // Never complete a delivery without a fresh, valid GPS observation for this visit.
+ if(!gpsSaved&&!gpsResult?.queued){button.disabled=false;button.textContent='Retry Mark Done';$('message').textContent='Delivery NOT marked done. Valid GPS (1–30 m) is required. '+gpsMessage;return;}
  button.textContent='Saving delivery…';
  try{
   if(!navigator.onLine)throw new Error('OFFLINE_QUEUE');
@@ -202,7 +204,7 @@ async function captureGps(r,button,captureMode='delivery_initial_mapping',option
     if(deadline!==null)clearTimeout(deadline);
     if(err)reject(err);else resolve(bestFix);
    };
-   deadline=setTimeout(()=>finish(bestFix&&bestFix.acc<=30?null:new Error('GPS signal is weak ('+Math.round(bestFix?.acc||0)+' m). Delivery can still be saved; GPS will be retried when signal improves.')),3000);
+   deadline=setTimeout(()=>finish(bestFix&&bestFix.acc>0&&bestFix.acc<=30?null:new Error('No reliable GPS fix received within 25 seconds. Delivery was NOT marked done. Enable Android and Chrome Precise location, then retry.')),25000);
    try{
     watchId=navigator.geolocation.watchPosition(pos=>{
      const c=pos.coords,acc=Number(c.accuracy);
@@ -216,7 +218,7 @@ async function captureGps(r,button,captureMode='delivery_initial_mapping',option
      if(bestFix.acc<=10)finish();
     },err=>{
      if(err.code===1)finish(new Error('Location permission denied. Allow precise location for this app.'));else if(status)status.textContent='Waiting for GPS signal…';
-    },{enableHighAccuracy:true,timeout:8000,maximumAge:5000});
+    },{enableHighAccuracy:true,timeout:25000,maximumAge:0});
    }catch(e){finish(e)}
   });
   if(!best||best.acc>30)throw new Error('Best GPS accuracy was '+Math.round(best?.acc||0)+' m. Need 30 m or better. Keep Location enabled and retry in a more open place.');
