@@ -94,7 +94,7 @@ assert.ok(dashboard.includes("async function publishSelectedRoute()"), "Office d
 assert.ok(dashboard.includes("stopType==='approved_consumer_gps'"), "Office dashboard must publish only approved GPS stops");
 assert.ok(dashboard.includes("await captureDeliveryGPS(d, 'delivery_after_mark_delivered')"), "Embedded DeliveryApp must capture a fresh GPS observation on every Mark Done");
 assert.ok(dashboard.includes("navigator.geolocation.watchPosition(pos=>"), "Embedded DeliveryApp must use continuous GPS updates");
-assert.ok(dashboard.includes("bestFix.acc<=10)finish()"), "Embedded DeliveryApp must stop early for a 10m or better GPS fix");
+assert.ok(dashboard.includes("bestFix.acc<=10&&Date.now()-startedAt>=5000)finish()"), "Embedded DeliveryApp must wait for refinement before accepting a 10m or better GPS fix");
 assert.ok(dashboard.includes("timer=setTimeout(()=>finish(bestFix&&bestFix.acc>0&&bestFix.acc<=30?null:new Error") && dashboard.includes(")),30000);"), "Dashboard GPS acquisition must wait up to 30 seconds for a valid fix");
 assert.ok(dashboard.includes("captureMode!=='delivery_after_mark_delivered'&&_gps"), "Embedded Mark Done must not reuse a warm mapping fix");
 assert.ok(dashboard.includes("Date.now()-startedAt>=5000"), "Embedded GPS capture must allow a refinement period");
