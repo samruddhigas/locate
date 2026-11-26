@@ -215,6 +215,8 @@ gps_checks = [
     ("embedded delivery app uses one-shot GPS fallback", "getCurrentPosition(acceptPosition,acceptError" in dashboard_source),
     ("embedded entrance map can refresh GPS in place", "function retryDeliveryGpsPin()" in dashboard_source and "pinConfirmed==='retry'" in dashboard_source),
     ("offline delivery sync sends GPS before completion", "await flushPendingDeliveryGps();await flushPendingDeliveryCompletions();" in dashboard_source),
+    ("office approval map plots all pending and approved GPS pins", "Object.entries(STATE.gpsApprovals).forEach" in dashboard_source and "Object.entries(STATE.consumerGPS).forEach" in dashboard_source),
+    ("office route map plots every optimized stop pin", "route.optimized.forEach((stop, si)" in dashboard_source and "L.marker([stop.coords.lat, stop.coords.lng]" in dashboard_source),
     ("server rejects zero accuracy", "!Number.isFinite(acc) || acc <= 0 || acc > 30" in api_source),
     ("server requires the exact booking GPS history row", '.eq("booking_key",bookingKey).eq("consumer_no",consumerNo).eq("captured_by",user.name)' in api_source),
     ("server blocks completion without a valid visit GPS row", "Delivery cannot be marked done: a fresh GPS reading for this exact booking" in api_source),
