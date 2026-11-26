@@ -6439,7 +6439,7 @@ async function captureDeliveryGPS(d, captureMode='delivery_after_mark_delivered'
     const best = warmFix||await new Promise((resolve,reject)=>{
       let watch=null,timer=null,bestFix=null,finished=false,startedAt=Date.now();
       const finish=err=>{if(finished)return;finished=true;if(watch!==null)navigator.geolocation.clearWatch(watch);if(timer!==null)clearTimeout(timer);if(err)reject(err);else resolve(bestFix);};
-      timer=setTimeout(()=>finish(bestFix&&bestFix.acc>0&&bestFix.acc<=30?null:new Error('No reliable GPS fix received within 30 seconds. Delivery was NOT marked done. Check Android and Chrome location permissions, then retry.')),30000);
+      timer=setTimeout(()=>finish(bestFix&&bestFix.acc>0&&bestFix.acc<=1000?null:new Error('No GPS coordinates received within 30 seconds. Delivery was NOT marked done. Check Android and Chrome location permissions, then retry.')),30000);
       try { watch=navigator.geolocation.watchPosition(pos=>{
         const c=pos.coords,acc=Number(c.accuracy);if(!Number.isFinite(acc)||acc<=0||acc>1000)return;
         const fix={lat:Number(c.latitude),lng:Number(c.longitude),acc,ts:Number(pos.timestamp)||Date.now()};
@@ -6477,6 +6477,8 @@ function setDeliveryGpsLayer(which){if(!_deliveryGpsMap)return;if(_deliveryGpsLa
 async function saveDeliveryGpsPin(){
   if(!_deliveryGpsCurrent||!_deliveryGpsBest||!_deliveryGpsMarker)return;
   const btn=document.getElementById('deliveryGpsPinSave');btn.disabled=true;btn.textContent='Saving…';const p=_deliveryGpsMarker.getLatLng(),d=_deliveryGpsCurrent,best=_deliveryGpsBest;
+  const offset=deliveryGpsDistance(best.lat,best.lng,p.lat,p.lng);
+  if(!Number.isFinite(best.acc)||best.acc<=0||best.acc>30||offset>500){btn.disabled=false;btn.textContent='Confirm & Save';toast('⚠️ Cannot save · GPS must be <=30 m and entrance pin within 500 m','#b45309');return;}
   const payload={booking_key:String(d.orderNo||d.id||''),consumer_no:String(d.consumerNo),raw_lat:best.lat,raw_lng:best.lng,pin_lat:p.lat,pin_lng:p.lng,lat:p.lat,lng:p.lng,acc:best.acc,readings:_deliveryGpsSamples.slice(-5),capture_mode:_deliveryGpsCaptureMode};
   try{
     await newProjectApiPost({action:'gps_capture',...payload},DELIVERY_SESSION_TOKEN);
