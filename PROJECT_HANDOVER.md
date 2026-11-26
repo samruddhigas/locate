@@ -776,3 +776,81 @@ No production customer master, delivered-cylinder, pending-booking, or completio
   - sw.js mirror commit `df20a2f5160d229454421366f416996b00ee8aec`
 - Re-fetched all three files from both repositories and verified matching Git blob SHAs: app.js `ccab4099eab7af1447a400d47c10438bf0b60b04`, index.html `4956f28f7eb201c4692d7ce5ba4f8a8077994ca5`, sw.js `ceb5c05b3f2f10d6e865e2a1e3c7ad81fc3754b9`.
 - This resolves the source-of-truth overwrite defect for the standalone DeliveryApp. GitHub Pages deployment and physical Android GPS success remain unverified; do not claim live fix until served assets and a real handset capture are confirmed.
+
+## 22. 26 November 2026 — Full GPS and Location Capture Audit
+
+### Scope audited
+- Canonical consumer WhatsApp location page: root `index.html`.
+- Standalone Android-first DeliveryApp: `deliveryapp/index.html`, `deliveryapp/app.js`, `deliveryapp/sw.js`.
+- Office Dashboard embedded DeliveryApp: `dashboard/index.html` and its generated `DELIVERY_APP_HTML` template.
+- Server-side GPS capture, delivery completion, booking ownership and location verification in `supabase/functions/lpg-api/index.ts`.
+- GPS history, delivery completion, temporary-location, exception and route database rules.
+- Public-to-private repository auto-sync workflow and GPS regression tests.
+
+### Confirmed defects found and corrected
+
+1. **Consumer GPS capture terminated too early**
+   - Android `POSITION_UNAVAILABLE` errors could terminate a capture even though a later fix might arrive.
+   - Consumer capture now keeps transient errors alive until a 45-second overall deadline; only explicit permission denial ends the attempt immediately.
+   - High-accuracy watch requests use `maximumAge:0`; readings with invalid coordinates or stale/future timestamps are discarded.
+   - A good first fix is allowed a 5-second refinement period before the map opens.
+   - If a valid coordinate exists but reported accuracy is weaker than 30 m at the deadline, the entrance map is still shown for inspection/correction. Submission remains disabled until reported accuracy is 30 m or better.
+   - Consumer source commit: `a3d9b5b5a016834958a9282688d1dc833f43ccb3`.
+
+2. **DeliveryApp could reuse a warmed location for Mark Done**
+   - The continuously warmed GPS watcher remains useful for navigation and initial mapping, but Mark Done now requests a fresh reading after the delivery action starts.
+   - Fresh coordinates are range-checked; timestamps more than 5 seconds in the future or older than 10 seconds are rejected.
+   - The app waits at least 5 seconds after starting capture before accepting a 10 m-or-better reading; it waits up to 30 seconds for a valid 1–30 m reading.
+   - Standalone DeliveryApp source commit: `aeedf7165e8d0752c734ba7c5caf187a1e75d6b1`.
+   - Dashboard-embedded DeliveryApp source commit: `93db638fa8a33c9cf39fc1c077a31e98e8579c1d`.
+
+3. **Server accepted zero-metre accuracy and could prove a delivery with the wrong GPS row**
+   - `gps_capture` now rejects accuracy values of zero and future readings more than 60 seconds ahead.
+   - A duplicate booking GPS record is accepted only when it belongs to the same signed-in delivery user, has the expected capture mode and has valid accuracy.
+   - Delivery completion now queries GPS history by the exact booking key, consumer number, signed-in delivery name and `delivery_after_mark_delivered` capture mode.
+   - The previous fallback to the general `lpg_gps` customer record was removed. A permanent approved customer pin can no longer be reused as proof of the current delivery visit.
+   - Completion is rejected unless the exact visit observation is valid and falls within the permitted completion-time window.
+   - API source commit: `8b1adda88456f74a50693ad0e5683977643d3624`.
+   - Deployed Supabase `lpg-api`: **version 53, ACTIVE**. The deployed Edge Function source was fetched and compared with GitHub; contents match.
+
+4. **Database allowed zero-accuracy evidence and optional new completions**
+   - Applied migration `20261126061457_gps_capture_integrity_and_required_delivery_visit_fix` to project `uggqsvgxjhvdfkddqzyh`.
+   - GPS history, master GPS, temporary GPS and delivery-location observation accuracy constraints now reject zero accuracy.
+   - A database trigger rejects new delivery-completion inserts or GPS-field changes unless a valid visit timestamp, coordinates and 1–30 m accuracy are supplied. It also checks that the GPS timestamp is within the permitted visit window.
+   - Existing completion rows were preserved; the trigger does not retroactively alter legacy rows.
+   - Migration file is committed as `supabase/migrations/20261126061457_gps_capture_integrity_and_required_delivery_visit_fix.sql`, GitHub commit `ba354c14b254e64175b556d3b00d2f2657a4e65b5`.
+
+5. **Automatic sync could omit the new database migration**
+   - Updated the private DeliveryApp auto-sync workflow to copy the new migration from the canonical `locate` repository as well as the existing app and API files.
+   - Workflow commit: `307f96489da0fa76d2561f3cd960d4395bbc2938`.
+   - Re-fetched canonical and private files and verified matching Git blob hashes for standalone `app.js`, `index.html`, `sw.js`, and `lpg-api/index.ts`. The new migration is also present in the private repository.
+   - The PWA service worker remains at cache v18 and uses network-first revalidation for executable scripts, with offline fallback.
+
+### Regression tests and verification
+
+**Verified directly**
+- Supabase project `uggqsvgxjhvdfkddqzyh` is ACTIVE_HEALTHY; all changes were made only to this new project.
+- Live `lpg-api` version 53 is ACTIVE and its deployed source exactly matches the canonical GitHub file.
+- Database trigger test: an attempted delivery completion without GPS was rejected; no test row remained.
+- Database accuracy tests: zero-accuracy GPS-history and delivery-location-observation inserts were rejected; no test rows remained.
+- Production counts before and after the tests were unchanged: `lpg_masters=10988`, `lpg_gps=0`, `lpg_gps_history=0`, `lpg_delivery_completions=4`, `lpg_delivery_location_observations=0`, and open exceptions = 0.
+- The location-verification RPC is executable by `service_role`; it is not executable by `anon` or `authenticated`.
+- Ten source-contract checks covering consumer, standalone, embedded, API, PWA cache and auto-sync behavior passed.
+- Canonical and private mirror source hashes were checked after the latest sync.
+
+**Added to automated repository validation**
+- `tools/validate_static.py` now checks the consumer 45-second capture, transient error handling, weak-fix map gating, fresh-only Mark Done capture, 30-second DeliveryApp acquisition, backend exact-booking GPS requirement, zero-accuracy rejection and migration presence.
+- `tools/test_api_contract.js` was updated for the new 30-second capture and exact visit-history requirement; it no longer expects the old 3-second timeout or GPS-optional completion.
+- Test source commits: `4fea335802f74473ea51d99a7cc7ab6b9e0350de`, `77be6f8629131050ea1421db57ac1c60f9d1e9c2`, `4e3af083fbd2ce927bbd53ee460a7ee833181f39`, `e1b579436e1ec8c7a8718f0cb64a6cec3b5e24cb`, `27bc0cf88016eac3e72924f0b704b643590bc1fa`.
+- GitHub Actions check-run results for this latest audit were not exposed to this session; do not label the repository test workflow as passed until its run is confirmed.
+
+### Current live-data and field-test status
+
+- At audit time, the database contained 10,988 consumer master rows, but zero GPS master rows, zero GPS history rows and zero delivery-location observations. This is a snapshot, not a data correction. No customer or delivery records were inserted, deleted or modified by this audit.
+- The latest GitHub Pages response could not be fetched by the available inspection channel. GitHub source and Supabase deployment are verified; the public Pages-served HTML/JS version is **not independently verified** here.
+- No physical Android handset was connected to this session. Actual GNSS accuracy, Chrome permission behavior, map tile rendering/touch, customer WhatsApp capture and offline reconnect remain **field tests pending**. Source or database tests cannot prove that a phone will achieve 7 m at a particular location.
+- Existing office-controlled allocation, approved customer pins, route ownership and manual office approval rules remain unchanged.
+
+### Supersedes earlier statements
+- This Section 22 supersedes the earlier Section 20/21 references to a 3-second GPS timeout, permissive GPS-optional delivery completion, and a general customer GPS fallback being sufficient proof of a delivery visit.
+- It also supersedes the earlier statement that a 25-second wait alone was the final fix. Current capture windows are 45 seconds for the consumer form and 30 seconds for DeliveryApp Mark Done, with exact visit-specific server validation.
