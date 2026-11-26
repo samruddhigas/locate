@@ -379,7 +379,7 @@
 // Secure one-time-token LocationCapture using the NEW Samruddhi project.
 const LPG_API_URL = 'https://uggqsvgxjhvdfkddqzyh.supabase.co/functions/v1/lpg-api';
 let _linkToken='', _apiKey='', _consumerNo='', _consumerName='', _consumerArea='';
-let _capturing=false, _captureReady=false, _readings=[], _bestFix=null, _watchId=null, _captureTimer=null;
+let _capturing=false, _captureReady=false, _readings=[], _bestFix=null, _watchId=null, _captureTimer=null, _captureStartedAt=0;
 let _rawPosition=null, _entrancePosition=null, _consumerMap=null, _consumerMarker=null, _consumerStreetLayer=null, _consumerSatelliteLayer=null, _consumerMapLayer='street';
 
 function validPublicKey(key) {
@@ -421,15 +421,15 @@ function startCapture(){
   if(_capturing||_captureReady)return;
   if(!navigator.geolocation){showError('Your browser does not support GPS. Please open this link in Chrome.');return;}
   if(!_linkToken||!_consumerNo||!_apiKey){showError('Secure link verification is incomplete. Request a new link from the agency.');return;}
-  _capturing=true;_readings=[];_bestFix=null;
+  _capturing=true;_readings=[];_bestFix=null;_captureStartedAt=Date.now();
   document.getElementById('shareBtn').disabled=true;
   document.getElementById('shareBtn').innerHTML='<span class="loading-spinner"></span><span>Finding your best GPS…<span class="btn-marathi">अचूक लोकेशन शोधत आहे…</span></span>';
   document.getElementById('successCard').style.display='none';document.getElementById('errorCard').style.display='none';
   document.getElementById('pinMapPanel').style.display='none';document.getElementById('accMeter').classList.add('visible');
-  _watchId=navigator.geolocation.watchPosition(onGPSReading,onGPSError,{enableHighAccuracy:true,timeout:25000,maximumAge:0});
+  _watchId=navigator.geolocation.watchPosition(onGPSReading,onGPSError,{enableHighAccuracy:true,timeout:45000,maximumAge:0});
   // Allow Android fused-location/GNSS providers enough time to produce a real fix.
   // Keep the best fresh reading for up to 25 seconds; do not fail after an arbitrary 3-second window.
-  _captureTimer=setTimeout(()=>{if(_capturing){if(_bestFix&&_bestFix.acc<=30)showEntranceMap(_bestFix);else{_capturing=false;stopWatch();document.getElementById('accMeter').classList.remove('visible');showError('No GPS fix within 25 seconds. Check that Location and Precise location are enabled. You can retry without restarting the page. Best reading: '+(_bestFix?'±'+Math.round(_bestFix.acc)+' m':'not available')+'.');resetBtn();}}},25000);
+  _captureTimer=setTimeout(()=>{if(_capturing){if(_bestFix)showEntranceMap(_bestFix,true);else{_capturing=false;stopWatch();document.getElementById('accMeter').classList.remove('visible');showError('No GPS reading received within 45 seconds. Check device Location, Chrome permission and Precise location. You can retry without restarting the page.');resetBtn();}}},45000);
 }
 function readingCentre(a){return{lat:a.reduce((s,r)=>s+r.lat,0)/a.length,lng:a.reduce((s,r)=>s+r.lng,0)/a.length};}
 function pointDistance(a,b,c,d){const R=6371000,x=Math.sin((c-a)*Math.PI/360)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin((d-b)*Math.PI/360)**2;return 2*R*Math.asin(Math.sqrt(x));}
@@ -437,26 +437,26 @@ function onGPSReading(pos){
   if(!_capturing)return;
   const lat=Number(pos.coords.latitude),lng=Number(pos.coords.longitude),acc=Number(pos.coords.accuracy);
   if(!Number.isFinite(lat)||lat < -90||lat>90||!Number.isFinite(lng)||lng < -180||lng>180||!Number.isFinite(acc)||acc<=0||acc>1000)return;
-  const fix={lat,lng,acc,ts:Number(pos.timestamp)||Date.now()};
+  const ts=Number(pos.timestamp)||Date.now();
+  if(ts>Date.now()+5000||Date.now()-ts>15000)return;
+  const fix={lat,lng,acc,ts};
+  _readings.push(fix);if(_readings.length>20)_readings.shift();
   if(!_bestFix||acc<_bestFix.acc)_bestFix=fix;
   updateAccMeter(_bestFix.acc);
-  if(_bestFix.acc<=10)showEntranceMap(_bestFix);
+  // Give the receiver a few seconds to refine a good first fix instead of
+  // stopping at the first transient reading that happens to report <=10 m.
+  if(_bestFix.acc<=10&&Date.now()-_captureStartedAt>=5000)showEntranceMap(_bestFix);
 }
 function onGPSError(err){
   if(!_capturing)return;
-  if(_bestFix&&_bestFix.acc<=30){showEntranceMap(_bestFix);return;}
-  // A TIMEOUT from one watch cycle is not necessarily a terminal failure.
-  // Keep listening until the overall 25-second capture window expires.
-  if(err&&err.code===3){
-    document.getElementById('accHint').textContent='GPS is still searching. Keep this screen open; the best reading is retained automatically…';
-    return;
+  if(err&&err.code===1){
+    _capturing=false;stopWatch();if(_captureTimer)clearTimeout(_captureTimer);
+    document.getElementById('accMeter').classList.remove('visible');
+    showError('Location permission denied. Allow precise location for Chrome and retry.');resetBtn();return;
   }
-  _capturing=false;stopWatch();if(_captureTimer)clearTimeout(_captureTimer);
-  document.getElementById('accMeter').classList.remove('visible');
-  let m='Could not get your location. ';
-  if(err.code===1)m='Location permission denied. Allow precise location access for Chrome and try again.';
-  else if(err.code===2)m='GPS signal unavailable. Turn on device Location and allow Precise location for Chrome.';
-  showError(m);resetBtn();
+  // POSITION_UNAVAILABLE and TIMEOUT can be transient on Android fused location.
+  // Keep the watcher alive; the overall 45-second deadline controls failure.
+  document.getElementById('accHint').textContent='GPS is still searching. Keep this screen open; transient GPS errors will be retried automatically…';
 }
 function updateAccMeter(acc){
   const fill=document.getElementById('accFill'),value=document.getElementById('accValue'),hint=document.getElementById('accHint');
@@ -467,15 +467,15 @@ function updateAccMeter(acc){
   else{color='#dc2626';cls='red';msg='📡 Searching for a stronger GPS signal…';}
   fill.style.width=pct+'%';fill.style.background=color;value.textContent='±'+Math.round(acc)+'m';value.className='acc-value '+cls;hint.textContent=msg;
 }
-function showEntranceMap(c){
+function showEntranceMap(c,allowWeakFix=false){
   if(!_capturing)return;_capturing=false;_captureReady=true;stopWatch();if(_captureTimer)clearTimeout(_captureTimer);
   document.getElementById('accMeter').classList.remove('visible');document.getElementById('shareBtn').style.display='none';document.getElementById('msgBox').style.display='none';
   const fix=c;
-  if(!fix||!Number.isFinite(fix.acc)||fix.acc<=0||fix.acc>30){_captureReady=false;showError('GPS accuracy is not sufficient yet. Try again in an open area.');resetBtn();return;}
+  if(!fix||!Number.isFinite(fix.acc)||fix.acc<=0||fix.acc>1000||(!allowWeakFix&&fix.acc>30)){_captureReady=false;showError('GPS accuracy is not sufficient yet. Try again in an open area.');resetBtn();return;}
   _bestFix=fix;_readings=[fix];
   _rawPosition={lat:fix.lat,lng:fix.lng};_entrancePosition={lat:fix.lat,lng:fix.lng};
   document.getElementById('pinMapPanel').style.display='block';
-  if(!window.L){document.getElementById('pinDistance').textContent='Map unavailable; your precise GPS position will be used as the entrance pin.';document.getElementById('confirmLocationBtn').disabled=false;return;}
+  if(!window.L){document.getElementById('pinDistance').textContent='Map unavailable; GPS accuracy must be 30 m or better before submitting.';updateEntranceDistance();return;}
   if(!_consumerMap){
     _consumerMap=L.map('consumerPinMap',{zoomControl:true}).setView([c.lat,c.lng],19);
     _consumerStreetLayer=L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',{maxZoom:22,attribution:'© OpenStreetMap contributors © CARTO'});
@@ -505,8 +505,9 @@ function updateEntranceDistance(){
   if(!_rawPosition){btn.disabled=true;return;}
   if(_consumerMarker){const p=_consumerMarker.getLatLng();_entrancePosition={lat:p.lat,lng:p.lng};}
   const d=pointDistance(_rawPosition.lat,_rawPosition.lng,_entrancePosition.lat,_entrancePosition.lng);
-  if(d>500){btn.disabled=true;el.style.color='#dc2626';el.textContent='⚠️ Entrance pin is '+Math.round(d)+' m away. Move it within 500 m.';}
-  else{btn.disabled=false;el.style.color='#16a34a';el.textContent='Entrance pin offset: '+Math.round(d)+' m. Looks good.';}
+  if(!_bestFix||!Number.isFinite(_bestFix.acc)||_bestFix.acc<=0||_bestFix.acc>30){btn.disabled=true;el.style.color='#dc2626';el.textContent='Map is available for correction, but GPS accuracy is ±'+Math.round(_bestFix?.acc||0)+' m. Submission requires 30 m or better. Retry GPS to improve it.';}
+  else if(d>500){btn.disabled=true;el.style.color='#dc2626';el.textContent='⚠️ Entrance pin is '+Math.round(d)+' m away. Move it within 500 m.';}
+  else{btn.disabled=false;el.style.color='#16a34a';el.textContent='Entrance pin offset: '+Math.round(d)+' m. GPS accuracy ±'+Math.round(_bestFix.acc)+' m. Looks good.';}
 }
 async function submitLocation(){
   if(!_captureReady||!_rawPosition||!_entrancePosition)return;
