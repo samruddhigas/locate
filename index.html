@@ -327,6 +327,9 @@
     </div>
     <div id="consumerPinMap" style="height:290px;border-radius:12px;border:1px solid var(--border);overflow:hidden;background:#eee"></div>
     <div id="pinDistance" style="font-size:12px;text-align:center;margin:9px 0 12px;color:var(--text2)">Checking entrance pin…</div>
+    <button type="button" class="secondary-map-btn" style="width:100%;margin-bottom:8px" onclick="retryConsumerGps()">↻ Refresh GPS reading
+      <span class="btn-marathi">पुन्हा GPS शोधा</span>
+    </button>
     <button id="confirmLocationBtn" class="share-btn" type="button" onclick="submitLocation()" disabled>
       <span>📍 Confirm & Submit Location</span><span class="btn-marathi">लोकेशन निश्चित करून पाठवा</span>
     </button>
@@ -518,6 +521,13 @@ function updateEntranceDistance(){
   if(!_bestFix||!Number.isFinite(_bestFix.acc)||_bestFix.acc<=0||_bestFix.acc>30){btn.disabled=true;el.style.color='#dc2626';el.textContent='Map is available for correction, but GPS accuracy is ±'+Math.round(_bestFix?.acc||0)+' m. Submission requires 30 m or better. Retry GPS to improve it.';}
   else if(d>500){btn.disabled=true;el.style.color='#dc2626';el.textContent='⚠️ Entrance pin is '+Math.round(d)+' m away. Move it within 500 m.';}
   else{btn.disabled=false;el.style.color='#16a34a';el.textContent='Entrance pin offset: '+Math.round(d)+' m. GPS accuracy ±'+Math.round(_bestFix.acc)+' m. Looks good.';}
+}
+function retryConsumerGps(){
+  if(_capturing)return;
+  _captureReady=false;_rawPosition=null;_entrancePosition=null;_bestFix=null;_readings=[];
+  document.getElementById('pinMapPanel').style.display='none';
+  const share=document.getElementById('shareBtn');share.style.display='';share.disabled=false;
+  startCapture();
 }
 async function submitLocation(){
   if(!_captureReady||!_rawPosition||!_entrancePosition)return;
