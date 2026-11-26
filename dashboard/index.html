@@ -6391,7 +6391,7 @@ async function syncDeliveryCompletions(){
     await flushPendingDeliveryCompletions();save();renderAll();
   }catch(e){toast('⚠️ Could not refresh central delivery status · '+e.message,'#b45309');}
 }
-window.addEventListener('online',()=>{flushPendingDeliveryGps();flushPendingDeliveryCompletions();});
+window.addEventListener('online',async()=>{await flushPendingDeliveryGps();await flushPendingDeliveryCompletions();});
 
 function undoDone(id) {
   const d = APP.deliveries.find(x => x.id === id);
