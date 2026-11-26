@@ -78,7 +78,7 @@ function sortRows(rows){if(state.sortMode==='published'&&state.publishedRoute.le
 function completionKey(r,index=0){return r.booking?`booking:${r.booking}`:`fallback:${r.consumer}|${r.area}|${r.address}|${r.phone}|${r.qty}|${index}`}
 async function completeBooking(r,key,button){
  if(state.done.has(key))return;
- const record={booking_key:String(r.booking||''),consumer_no:String(r.consumer||''),qty:Math.max(1,Number(r.qty)||1),completed_at:new Date().toISOString()};
+ const record={booking_key:String(r.booking||''),consumer_no:String(r.consumer||''),qty:Math.max(1,Number(r.qty)||1),completed_at:null};
  if(!record.booking_key||!record.consumer_no){alert('Booking identity is incomplete. Refresh bookings and contact the office.');return}
  button.disabled=true;button.textContent='Getting location…';
  let gpsSaved=false,gpsMessage='';
@@ -89,6 +89,8 @@ async function completeBooking(r,key,button){
  gpsMessage=gpsResult?.message||'';
  // Never complete a delivery without a fresh, valid GPS observation for this visit.
  if(!gpsSaved&&!gpsResult?.queued){button.disabled=false;button.textContent='Retry Mark Done';$('message').textContent='Delivery NOT marked done. Valid GPS (1–30 m) is required. '+gpsMessage;return;}
+ // Start the completion window only after the operator confirms the map pin.
+ record.completed_at=new Date().toISOString();
  button.textContent='Saving delivery…';
  try{
   if(!navigator.onLine)throw new Error('OFFLINE_QUEUE');
