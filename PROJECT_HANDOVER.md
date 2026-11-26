@@ -763,3 +763,16 @@ No production customer master, delivered-cylinder, pending-booking, or completio
 - Post-commit source re-fetch confirmed the new 25-second timeout, `maximumAge:0`, mandatory GPS gate and v18 cache identifier are present in the repositories. Dashboard embedded source also re-fetched with the 25-second timeout and fresh-fix gate.
 - No GitHub Pages deployment run, live served-script inspection or physical Android test has yet confirmed that the browser is receiving this new build. The source commits alone do not prove the hosted app is updated.
 - If the exact old “GPS signal is weak (0 m). Delivery can still be saved” message appears again after the v18 service worker is active, capture the served app version and inspect which URL/embedded build is being opened; that message is not present in the corrected standalone source.
+
+### Section 21 addendum — Canonical DeliveryApp source path and mirror repair
+- Root cause of repeated regression identified: the auto-sync workflow in the private DeliveryApp repository explicitly copies `index.html`, `app.js`, `app.css`, and `sw.js` from the canonical `samruddhigas/locate/deliveryapp/` directory. Previous edits to the private mirror alone were overwritten at the next scheduled sync. The earlier correction was therefore applied to the wrong source of truth for this app.
+- Corrected canonical source files:
+  - `deliveryapp/app.js`, commit `16d5bc6b79c43bedfcb7ebe3d82383b6ca136526`: 25-second fresh GPS acquisition, `maximumAge:0`, reject zero/invalid accuracy, block Mark Done unless this visit's GPS is saved or validly queued offline.
+  - `deliveryapp/index.html`, commit `e82bb96a486fa05e132d9d23eea6530e29142f67`: removed the misleading text that delivery can still be saved without GPS.
+  - `deliveryapp/sw.js`, commit `6e19780a8f8f2532fdf75ceb202612b873e5d658`: bumped cache v17 to v18 and made executable scripts network-first with offline fallback.
+- Mirrored those exact canonical files to private `SAMRUDDHI-DELIVERY-APP`:
+  - app.js mirror commit `ae4a22ebb64da5c4b53a53c96d147f9318481e9d`
+  - index.html mirror commit `f3bb522aed1468c292443179a47a85ad72c02295`
+  - sw.js mirror commit `df20a2f5160d229454421366f416996b00ee8aec`
+- Re-fetched all three files from both repositories and verified matching Git blob SHAs: app.js `ccab4099eab7af1447a400d47c10438bf0b60b04`, index.html `4956f28f7eb201c4692d7ce5ba4f8a8077994ca5`, sw.js `ceb5c05b3f2f10d6e865e2a1e3c7ad81fc3754b9`.
+- This resolves the source-of-truth overwrite defect for the standalone DeliveryApp. GitHub Pages deployment and physical Android GPS success remain unverified; do not claim live fix until served assets and a real handset capture are confirmed.
