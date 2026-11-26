@@ -172,8 +172,9 @@ function chooseGpsPin(r,best){
    street.addTo(map);marker=L.marker([best.lat,best.lng],{draggable:true}).addTo(map);
    const update=()=>{
     const p=marker.getLatLng(),offset=distance({lat:best.lat,lng:best.lng},{lat:p.lat,lng:p.lng});
-    $('pinPickerCoords').textContent='Entrance pin offset: '+Math.round(offset)+' m from GPS'+(offset>500?' · Move within 500 m':'');
-    $('pinPickerCoords').classList.toggle('pin-too-far',offset>500);$('pinPickerConfirm').disabled=offset>500;
+    const accuracyOk=Number.isFinite(best.acc)&&best.acc>0&&best.acc<=30;
+    $('pinPickerCoords').textContent='Entrance pin offset: '+Math.round(offset)+' m from GPS'+(offset>500?' · Move within 500 m':'')+(!accuracyOk?' · GPS accuracy must be 30 m or better before saving':'');
+    $('pinPickerCoords').classList.toggle('pin-too-far',offset>500||!accuracyOk);$('pinPickerConfirm').disabled=offset>500||!accuracyOk;
    };
    marker.on('dragend',update);map.on('click',e=>{marker.setLatLng(e.latlng);update();});
    $('pinPickerStreet').onclick=()=>{if(layer!=='street'){map.removeLayer(satellite);street.addTo(map);layer='street';}};
@@ -225,17 +226,14 @@ async function captureGps(r,button,captureMode='delivery_initial_mapping',option
     },{enableHighAccuracy:true,timeout:25000,maximumAge:0});
    }catch(e){finish(e)}
   });
-  if(!best||best.acc>30)throw new Error('Best GPS accuracy was '+Math.round(best?.acc||0)+' m. Need 30 m or better. Keep Location enabled and retry in a more open place.');
+  if(!best||!Number.isFinite(best.acc)||best.acc<=0||best.acc>1000)throw new Error('No valid GPS coordinate was received. Keep Location enabled and retry.');
   const accuracy=best.acc;
   let pin={lat:best.lat,lng:best.lng};
-  // Every GPS capture pauses for an entrance-pin confirmation. Silent mode only suppresses alerts.
-  // Mark Done must be one-tap: use the measured fix directly. The draggable
-  // entrance-pin map remains available for initial/manual mapping, not every delivery.
-  if(captureMode!=='delivery_after_mark_delivered'){
-   const selected=await chooseGpsPin(r,best);
-   if(!selected){if(status)status.textContent='Map selection cancelled. No location was submitted.';button.textContent='Capture GPS again';return {saved:false,message:'Pin selection cancelled.'};}
-   pin=selected;
-  }
+  // Every GPS capture, including Mark Done, requires an entrance-map pin confirmation.
+  // Weak fixes may be inspected on-map, but saving stays disabled until accuracy is <=30 m.
+  const selected=await chooseGpsPin(r,best);
+  if(!selected){if(status)status.textContent='Map selection cancelled or GPS accuracy is above 30 m. No location was submitted.';button.textContent='Capture GPS again';return {saved:false,message:'Pin confirmation unavailable. GPS accuracy must be 30 m or better.'};}
+  pin=selected;
   const payload={booking_key:String(r.booking||''),consumer_no:r.consumer,raw_lat:best.lat,raw_lng:best.lng,pin_lat:pin.lat,pin_lng:pin.lng,lat:pin.lat,lng:pin.lng,acc:accuracy,
    // Keep the device GPS fix separate from the entrance pin selected on the map.
    readings:[{lat:best.lat,lng:best.lng,acc:accuracy,ts:best.ts}],capture_mode:captureMode};
