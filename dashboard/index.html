@@ -6440,14 +6440,23 @@ async function captureDeliveryGPS(d, captureMode='delivery_after_mark_delivered'
       let watch=null,timer=null,bestFix=null,finished=false,startedAt=Date.now();
       const finish=err=>{if(finished)return;finished=true;if(watch!==null)navigator.geolocation.clearWatch(watch);if(timer!==null)clearTimeout(timer);if(err)reject(err);else resolve(bestFix);};
       timer=setTimeout(()=>finish(bestFix&&bestFix.acc>0&&bestFix.acc<=1000?null:new Error('No GPS coordinates received within 30 seconds. Delivery was NOT marked done. Check Android and Chrome location permissions, then retry.')),30000);
-      try { watch=navigator.geolocation.watchPosition(pos=>{
+      const acceptPosition=pos=>{
+        if(finished)return;
         const c=pos.coords,acc=Number(c.accuracy);if(!Number.isFinite(acc)||acc<=0||acc>1000)return;
         const fix={lat:Number(c.latitude),lng:Number(c.longitude),acc,ts:Number(pos.timestamp)||Date.now()};
         if(!Number.isFinite(fix.lat)||fix.lat < -90||fix.lat > 90||!Number.isFinite(fix.lng)||fix.lng < -180||fix.lng > 180||
            fix.ts>Date.now()+5000||Date.now()-fix.ts>10000)return;
         if(!bestFix||fix.acc<bestFix.acc)bestFix=fix;
         if(bestFix.acc<=10&&Date.now()-startedAt>=5000)finish();
-      },err=>{if(err.code===1)finish(new Error('Location permission denied. Allow precise location for this app.'));},{enableHighAccuracy:true,maximumAge:0,timeout:25000});}
+      };
+      const acceptError=err=>{if(err.code===1)finish(new Error('Location permission denied. Allow precise location for this app.'));};
+      try {
+        const gpsOptions={enableHighAccuracy:true,maximumAge:0,timeout:25000};
+        watch=navigator.geolocation.watchPosition(acceptPosition,acceptError,gpsOptions);
+        // Parallel one-shot request works as a fallback when Android Chrome's
+        // continuous watcher is slow to produce its first fix.
+        navigator.geolocation.getCurrentPosition(acceptPosition,acceptError,{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+      }
       catch(e){finish(e);}
     });
     if(!best||!Number.isFinite(best.acc)||best.acc<=0||best.acc>1000)throw new Error('No valid GPS coordinates received. Keep Location enabled and retry.');
