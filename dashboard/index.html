@@ -8830,7 +8830,7 @@ async function buildRouteOptimizer() {
   const byDM = new Map();
   const fallbackByDM = new Map();
   const missingAreas = new Set();
-  let gpsStopCount = 0;
+  let gpsStopCount = 0, manualPinCount = 0;
 
   // Use only approved/cloud-synchronized consumer pins for stop-level routing.
   // Unapproved captures remain in the office review queue and are not route inputs.
@@ -8849,9 +8849,9 @@ async function buildRouteOptimizer() {
         consumers:[p],
         lat:Number(gps.lat), lng:Number(gps.lng),
         coords:{lat:Number(gps.lat),lng:Number(gps.lng)},
-        stopType:isTemporary ? 'temporary_consumer_gps' : 'approved_consumer_gps'
+        stopType:isTemporary ? 'temporary_consumer_gps' : (gps.source==='staff_pin'?'office_manual_pin':'approved_consumer_gps')
       });
-      gpsStopCount++;
+      if(gps.source==='staff_pin')manualPinCount++;else gpsStopCount++;
       return;
     }
     const area = String(p.area || '(Unknown area)').trim();
@@ -8896,16 +8896,19 @@ async function buildRouteOptimizer() {
       dm,optimized,dist:Number.isFinite(dist)?dist.toFixed(1):'0.0',driveMinutes,
       routingMethod,roadGeometry,totalOrders,totalQty,
       noCoords:areaStops.filter(stop=>!stop.coords).map(stop=>stop.area),
-      gpsStops:gpsStops.length,areaEstimateStops:areaStops.filter(stop=>!!stop.coords).length
+      gpsStops:gpsStops.filter(stop=>stop.stopType==='approved_consumer_gps'||stop.stopType==='temporary_consumer_gps').length,
+      manualPinStops:gpsStops.filter(stop=>stop.stopType==='office_manual_pin').length,
+      areaEstimateStops:areaStops.filter(stop=>!!stop.coords).length
     });
   }
   _routeData.sort((a,b)=>b.totalOrders-a.totalOrders);
 
   const totalGps=_routeData.reduce((n,r)=>n+r.gpsStops,0);
+  const totalManual=_routeData.reduce((n,r)=>n+r.manualPinStops,0);
   const totalArea=_routeData.reduce((n,r)=>n+r.areaEstimateStops,0);
   const roadRoutes=_routeData.filter(r=>r.routingMethod==='road_network_estimate').length;
   const straightRoutes=_routeData.length-roadRoutes;
-  statusEl.textContent='✅ Routes prepared for '+_routeData.length+' delivery boys · '+totalGps+' approved GPS stops · '+totalArea+' area-estimate stops. Road-network optimized: '+roadRoutes+' · straight-line fallback: '+straightRoutes+'. Estimates only; office allocation unchanged.';
+  statusEl.textContent='✅ Routes prepared for '+_routeData.length+' delivery boys · '+totalGps+' measured/temporary GPS stops · '+totalManual+' office-manual pins · '+totalArea+' area estimates. Road-network optimized: '+roadRoutes+' · straight-line fallback: '+straightRoutes+'. Office allocation unchanged.';
   renderRouteMap(depot);
   renderRouteSummaryCards();
   renderRouteTables();
@@ -8993,14 +8996,14 @@ async function publishSelectedRoute() {
   if(!dm){statusEl.textContent='⚠️ Select one delivery boy before publishing.';return;}
   const route=_routeData.find(r=>r.dm===dm);
   if(!route){statusEl.textContent='⚠️ Optimize routes first.';return;}
-  const stops=route.optimized.filter(stop=>stop.stopType==='approved_consumer_gps'||stop.stopType==='temporary_consumer_gps').map((stop,index)=>{
+  const stops=route.optimized.filter(stop=>stop.stopType==='approved_consumer_gps'||stop.stopType==='temporary_consumer_gps'||stop.stopType==='office_manual_pin').map((stop,index)=>{
     const c=stop.consumers[0]||{};
     return {booking_key:String(c.orderNo||c.id||''),consumer_no:String(c.consumerNo||''),stop_order:index+1};
   }).filter(x=>x.booking_key&&x.consumer_no);
-  if(!stops.length){statusEl.textContent='⚠️ No office-approved or 3-delivery temporary GPS stops are available for this delivery boy. Area estimates cannot be published as exact customer stops.';return;}
+  if(!stops.length){statusEl.textContent='⚠️ No office-approved entrance pins are available for this delivery boy. Area estimates cannot be published as exact customer stops.';return;}
   if(!AUTH?.token||!['admin','staff'].includes(AUTH.role)){statusEl.textContent='⚠️ Office admin/staff login is required to publish routes.';return;}
   const now=new Date(),routeDate=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
-  if(!confirm('Publish '+stops.length+' verified GPS stops (office-approved or 3 consistent deliveries) for '+dm+' on '+routeDate+'? This replaces the previous published route for this delivery boy and date.'))return;
+  if(!confirm('Publish '+stops.length+' office-approved entrance pins (including any manually placed office pins) for '+dm+' on '+routeDate+'? Area estimates are excluded. This replaces the previous route for this delivery boy and date.'))return;
   statusEl.textContent='⏳ Publishing office-controlled stop order… distance and travel time are estimates; use map navigation for live traffic.';
   try{
     const result=await newProjectApiPost({action:'route_manage',op:'publish',route_date:routeDate,delivery_man:dm,stops},AUTH.token);
