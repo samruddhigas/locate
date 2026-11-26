@@ -157,7 +157,7 @@ Cache update commit:
 | Dashboard source | Build label v36 | `dashboard/index.html` header/title | Source metadata confirmed; full live workflow not tested |
 | `lpg-api` | v46 ACTIVE | Supabase Edge Function listing | Deployment status confirmed |
 | `deliveryapp` Edge Function | v3 ACTIVE | Supabase Edge Function listing | Deployment status confirmed |
-| Consumer GPS source | Commit `4038580` | GitHub commit and source inspection | Code change confirmed; real customer phone test pending |
+| Consumer GPS source | Commit `774de59` (25-second acquisition + map reflow) | `774de59b22bc203d993b27084a1810b836b062a0` | Source committed; Android field test pending |
 | DeliveryApp cache | `samruddhi-delivery-v16` | `deliveryapp/sw.js` | Source confirmed; installed-phone cache refresh not tested |
 | DeliveryApp standalone source | `deliveryapp/index.html` + `app.js` | GitHub source inspection | Source exists; full field test pending |
 | GitHub Pages | Three intended URLs listed above | Configuration/source context | Live publication not independently verified |
