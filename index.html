@@ -426,7 +426,11 @@ function startCapture(){
   document.getElementById('shareBtn').innerHTML='<span class="loading-spinner"></span><span>Finding your best GPS…<span class="btn-marathi">अचूक लोकेशन शोधत आहे…</span></span>';
   document.getElementById('successCard').style.display='none';document.getElementById('errorCard').style.display='none';
   document.getElementById('pinMapPanel').style.display='none';document.getElementById('accMeter').classList.add('visible');
-  _watchId=navigator.geolocation.watchPosition(onGPSReading,onGPSError,{enableHighAccuracy:true,timeout:45000,maximumAge:0});
+  const gpsOptions={enableHighAccuracy:true,timeout:45000,maximumAge:0};
+  _watchId=navigator.geolocation.watchPosition(onGPSReading,onGPSError,gpsOptions);
+  // Android Chrome may deliver the first usable fix faster through the one-shot
+  // provider path. Run it alongside watchPosition; both feed the same validator.
+  navigator.geolocation.getCurrentPosition(onGPSReading,onGPSError,{enableHighAccuracy:true,timeout:20000,maximumAge:0});
   // Allow Android fused-location/GNSS providers enough time to produce a real fix.
   // Keep the best fresh reading for up to 45 seconds; do not fail after an arbitrary short timeout.
   _captureTimer=setTimeout(()=>{if(_capturing){if(_bestFix)showEntranceMap(_bestFix,true);else{_capturing=false;stopWatch();document.getElementById('accMeter').classList.remove('visible');showError('No GPS reading received within 45 seconds. Check device Location, Chrome permission and Precise location. You can retry without restarting the page.');resetBtn();}}},45000);
