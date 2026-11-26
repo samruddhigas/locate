@@ -786,22 +786,25 @@ Deno.serve(async (req) => {
       const captureWindowStart = new Date(completedAt.getTime() - 30 * 60 * 1000).toISOString();
       const captureWindowEnd = new Date(completedAt.getTime() + 5 * 60 * 1000).toISOString();
       const {data:visitGps,error:visitGpsError}=await db.from("lpg_gps_history")
-        .select("raw_lat,raw_lng,pin_lat,pin_lng,acc,captured_at,capture_mode")
-        .eq("consumer_no",consumerNo).eq("captured_by",user.name)
+        .select("booking_key,raw_lat,raw_lng,pin_lat,pin_lng,acc,captured_at,capture_mode")
+        .eq("booking_key",bookingKey).eq("consumer_no",consumerNo).eq("captured_by",user.name)
         .eq("capture_mode","delivery_after_mark_delivered")
         .gte("captured_at",captureWindowStart).lte("captured_at",captureWindowEnd)
         .order("captured_at",{ascending:false}).limit(1).maybeSingle();
       if(visitGpsError) return Response.json({error:"Could not verify this delivery's GPS observation: "+visitGpsError.message},{status:503,headers:cors});
-      const {data:gps,error:gpsError}=await db.from("lpg_gps")
-        .select("lat,lng,acc,pin_lat,pin_lng,captured_at,status")
-        .eq("consumer_no",consumerNo).maybeSingle();
-      if(gpsError) return Response.json({error:"Could not verify saved GPS. Please retry after GPS sync."},{status:503,headers:cors});
-      const gpsLat=Number(visitGps?.pin_lat ?? (gps?.status==="approved" ? NaN : gps?.pin_lat ?? gps?.lat));
-      const gpsLng=Number(visitGps?.pin_lng ?? (gps?.status==="approved" ? NaN : gps?.pin_lng ?? gps?.lng));
-      const gpsAccuracy=Number(visitGps?.acc ?? (gps?.status==="approved" ? NaN : gps?.acc));
-      const gpsCapturedAt=visitGps?.captured_at ?? (gps?.status==="approved" ? null : gps?.captured_at);
-      const hasUsableGps=Number.isFinite(gpsLat)&&gpsLat>=-90&&gpsLat<=90&&Number.isFinite(gpsLng)&&gpsLng>=-180&&gpsLng<=180&&
-        Number.isFinite(gpsAccuracy)&&gpsAccuracy>=0&&gpsAccuracy<=30&&!!gpsCapturedAt;
+      // Only the exact GPS history row for this booking, consumer and signed-in delivery user
+      // may prove this visit. Never fall back to the consumer master pin or another visit.
+      const gpsLat=Number(visitGps?.pin_lat);
+      const gpsLng=Number(visitGps?.pin_lng);
+      const gpsAccuracy=Number(visitGps?.acc);
+      const gpsCapturedAt=visitGps?.captured_at ?? null;
+      const gpsTime=gpsCapturedAt ? Date.parse(gpsCapturedAt) : NaN;
+      const hasUsableGps=!!visitGps && visitGps.booking_key===bookingKey && visitGps.capture_mode==="delivery_after_mark_delivered" &&
+        Number.isFinite(gpsLat)&&gpsLat>=-90&&gpsLat<=90&&Number.isFinite(gpsLng)&&gpsLng>=-180&&gpsLng<=180&&
+        Number.isFinite(gpsAccuracy)&&gpsAccuracy>0&&gpsAccuracy<=30&&Number.isFinite(gpsTime)&&
+        gpsTime>=completedAt.getTime()-30*60*1000&&gpsTime<=completedAt.getTime()+5*60*1000;
+
+      if(!hasUsableGps) return Response.json({error:"Delivery cannot be marked done: a fresh GPS reading for this exact booking (1–30 m accuracy) has not been saved. Capture GPS again and retry."},{status:422,headers:cors});
 
       const record = {
         booking_key: bookingKey, consumer_no: consumerNo,
@@ -993,7 +996,7 @@ Deno.serve(async (req) => {
       const gpsMaxAgeMs = user.role === "delivery" ? 48 * 60 * 60 * 1000 : 5 * 60 * 1000;
       if (!consumerNo || consumerNo.length > 40 || !Number.isFinite(lat) || lat < -90 || lat > 90 ||
           !Number.isFinite(lng) || lng < -180 || lng > 180 || !Number.isFinite(rawLat) || rawLat < -90 || rawLat > 90 ||
-          !Number.isFinite(rawLng) || rawLng < -180 || rawLng > 180 || !Number.isFinite(acc) || acc < 0 || acc > 30) {
+          !Number.isFinite(rawLng) || rawLng < -180 || rawLng > 180 || !Number.isFinite(acc) || acc <= 0 || acc > 30) {
         return Response.json({ error: "Invalid GPS capture values: valid coordinates and reported accuracy within 30 metres are required" }, { status: 400, headers: cors });
       }
       const pinOffsetMeters=Math.hypot((lat-rawLat)*111320,(lng-rawLng)*111320*Math.cos(rawLat*Math.PI/180));
@@ -1001,7 +1004,7 @@ Deno.serve(async (req) => {
       const readings = Array.isArray(body.readings) ? body.readings.slice(-20) : [];
       const nowMs=Date.now();
       const cleanReadings = readings.map((r:any)=>({lat:Number(r?.lat),lng:Number(r?.lng),acc:Number(r?.acc),ts:Number(r?.ts)}))
-        .filter((r:any)=>Number.isFinite(r.lat)&&r.lat>=-90&&r.lat<=90&&Number.isFinite(r.lng)&&r.lng>=-180&&r.lng<=180&&Number.isFinite(r.acc)&&r.acc>=0&&r.acc<=30&&Number.isFinite(r.ts)&&r.ts<=nowMs+5*60*1000&&r.ts>=nowMs-gpsMaxAgeMs);
+        .filter((r:any)=>Number.isFinite(r.lat)&&r.lat>=-90&&r.lat<=90&&Number.isFinite(r.lng)&&r.lng>=-180&&r.lng<=180&&Number.isFinite(r.acc)&&r.acc>0&&r.acc<=30&&Number.isFinite(r.ts)&&r.ts<=nowMs+60*1000&&r.ts>=nowMs-gpsMaxAgeMs);
       if(cleanReadings.length<1) return Response.json({error:"At least one valid GPS reading is required within the allowed capture window"},{status:400,headers:cors});
       const capturedAtMs=Math.max(...cleanReadings.map((r:any)=>r.ts));
       const capturedAt=new Date(capturedAtMs).toISOString();
@@ -1031,10 +1034,16 @@ Deno.serve(async (req) => {
       // increment the GPS evidence count again for the same completed booking.
       if (user.role === "delivery" && captureMode === "delivery_after_mark_delivered") {
         const { data: priorVisit, error: priorVisitError } = await db.from("lpg_gps_history")
-          .select("id,captured_at,status").eq("booking_key", bookingKey).eq("consumer_no", consumerNo).maybeSingle();
+          .select("id,captured_at,status,captured_by,capture_mode,acc").eq("booking_key", bookingKey).eq("consumer_no", consumerNo).maybeSingle();
         if (priorVisitError) return Response.json({ error: "Could not check prior delivery GPS sync" }, { status: 503, headers: cors });
-        if (priorVisit) return Response.json({ duplicate: true, status: priorVisit.status, captured_at: priorVisit.captured_at,
-          message: "This booking's GPS visit was already saved." }, { headers: cors });
+        if (priorVisit) {
+          if (priorVisit.captured_by !== user.name || priorVisit.capture_mode !== "delivery_after_mark_delivered" ||
+              !Number.isFinite(Number(priorVisit.acc)) || Number(priorVisit.acc) <= 0 || Number(priorVisit.acc) > 30) {
+            return Response.json({ error: "A conflicting or invalid GPS record exists for this booking. Contact the office." }, { status: 409, headers: cors });
+          }
+          return Response.json({ duplicate: true, status: priorVisit.status, captured_at: priorVisit.captured_at,
+            message: "This booking's GPS visit was already saved." }, { headers: cors });
+        }
       }
       const { data: existing, error: readError } = await db.from("lpg_gps")
         .select("lat,lng,acc,count,status,raw_lat,raw_lng,pin_lat,pin_lng").eq("consumer_no", consumerNo).maybeSingle();
