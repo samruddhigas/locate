@@ -754,3 +754,12 @@ No production customer master, delivered-cylinder, pending-booking, or completio
 - Android Settings and Chrome must grant Location access with Precise location enabled. This device's precise-location state is not currently available to this session.
 - A 25-second wait improves the opportunity to obtain a fresh fix but cannot guarantee a particular accuracy; handset GNSS and sky visibility still matter.
 - The previous Section 20 statement that GPS acquisition was bounded to 3 seconds and that delivery completion remained possible without GPS is superseded by this Section 21 policy.
+
+### Section 21 addendum — 26 November 2026: stale standalone GPS source corrected
+- Follow-up inspection after the owner reported the same “GPS signal is weak (0 m)” message found that the current standalone repository main branch still contained the old 3-second timeout and the permissive Mark Done path, despite the earlier fix commit existing in commit history. Therefore the earlier standalone fix had not remained in the source version being served; it must not be treated as deployed/verified.
+- Re-applied the fix directly to the current standalone `app.js` main-branch content:
+  - Commit `eb93273a1e91d176b32533636aba92659da642b5`: 25-second GPS acquisition; `maximumAge:0`; reject zero/invalid accuracy; Mark Done returns without saving completion unless fresh valid GPS is saved or validly queued offline.
+  - Commit `4893d6069070173cc98485688a0ed97567f19a1`: service-worker cache bumped from `samruddhi-delivery-v17` to `samruddhi-delivery-v18` to force updated JS/CSS assets to be fetched after service-worker activation.
+- Post-commit source re-fetch confirmed the new 25-second timeout, `maximumAge:0`, mandatory GPS gate and v18 cache identifier are present in the repositories. Dashboard embedded source also re-fetched with the 25-second timeout and fresh-fix gate.
+- No GitHub Pages deployment run, live served-script inspection or physical Android test has yet confirmed that the browser is receiving this new build. The source commits alone do not prove the hosted app is updated.
+- If the exact old “GPS signal is weak (0 m). Delivery can still be saved” message appears again after the v18 service worker is active, capture the served app version and inspect which URL/embedded build is being opened; that message is not present in the corrected standalone source.
