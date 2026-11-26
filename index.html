@@ -426,9 +426,10 @@ function startCapture(){
   document.getElementById('shareBtn').innerHTML='<span class="loading-spinner"></span><span>Finding your best GPS…<span class="btn-marathi">अचूक लोकेशन शोधत आहे…</span></span>';
   document.getElementById('successCard').style.display='none';document.getElementById('errorCard').style.display='none';
   document.getElementById('pinMapPanel').style.display='none';document.getElementById('accMeter').classList.add('visible');
-  _watchId=navigator.geolocation.watchPosition(onGPSReading,onGPSError,{enableHighAccuracy:true,timeout:8000,maximumAge:15000});
-  // Keep watching briefly for a <=10 m fix; after 3 seconds accept the best fresh fix up to 30 m.
-  _captureTimer=setTimeout(()=>{if(_capturing){if(_bestFix&&_bestFix.acc<=30)showEntranceMap(_bestFix);else{_capturing=false;stopWatch();document.getElementById('accMeter').classList.remove('visible');showError('GPS signal is weak (best '+Math.round(_bestFix?.acc||0)+' m). Turn on Precise location and try near an open area.');resetBtn();}}},3000);
+  _watchId=navigator.geolocation.watchPosition(onGPSReading,onGPSError,{enableHighAccuracy:true,timeout:25000,maximumAge:0});
+  // Allow Android fused-location/GNSS providers enough time to produce a real fix.
+  // Keep the best fresh reading for up to 25 seconds; do not fail after an arbitrary 3-second window.
+  _captureTimer=setTimeout(()=>{if(_capturing){if(_bestFix&&_bestFix.acc<=30)showEntranceMap(_bestFix);else{_capturing=false;stopWatch();document.getElementById('accMeter').classList.remove('visible');showError('No GPS fix within 25 seconds. Check that Location and Precise location are enabled. You can retry without restarting the page. Best reading: '+(_bestFix?'±'+Math.round(_bestFix.acc)+' m':'not available')+'.');resetBtn();}}},25000);
 }
 function readingCentre(a){return{lat:a.reduce((s,r)=>s+r.lat,0)/a.length,lng:a.reduce((s,r)=>s+r.lng,0)/a.length};}
 function pointDistance(a,b,c,d){const R=6371000,x=Math.sin((c-a)*Math.PI/360)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin((d-b)*Math.PI/360)**2;return 2*R*Math.asin(Math.sqrt(x));}
@@ -444,12 +445,17 @@ function onGPSReading(pos){
 function onGPSError(err){
   if(!_capturing)return;
   if(_bestFix&&_bestFix.acc<=30){showEntranceMap(_bestFix);return;}
+  // A TIMEOUT from one watch cycle is not necessarily a terminal failure.
+  // Keep listening until the overall 25-second capture window expires.
+  if(err&&err.code===3){
+    document.getElementById('accHint').textContent='GPS is still searching. Keep this screen open; the best reading is retained automatically…';
+    return;
+  }
   _capturing=false;stopWatch();if(_captureTimer)clearTimeout(_captureTimer);
   document.getElementById('accMeter').classList.remove('visible');
   let m='Could not get your location. ';
-  if(err.code===1)m='Location permission denied. Allow precise location access in browser settings and try again.';
-  else if(err.code===2)m='GPS signal unavailable. Turn on device location and move near a window or outside.';
-  else if(err.code===3)m='GPS is taking too long. Try again in an open area.';
+  if(err.code===1)m='Location permission denied. Allow precise location access for Chrome and try again.';
+  else if(err.code===2)m='GPS signal unavailable. Turn on device Location and allow Precise location for Chrome.';
   showError(m);resetBtn();
 }
 function updateAccMeter(acc){
@@ -480,7 +486,12 @@ function showEntranceMap(c){
   if(_consumerMarker)_consumerMarker.remove();
   _consumerMarker=L.marker([c.lat,c.lng],{draggable:true}).addTo(_consumerMap);
   _consumerMarker.on('dragend',updateEntranceDistance);
-  updateEntranceDistance();setTimeout(()=>_consumerMap.invalidateSize(),180);
+  updateEntranceDistance();
+  // Leaflet is initialized inside a previously hidden panel; force layout recalculation
+  // after it becomes visible so the map canvas and tiles render on Android Chrome.
+  requestAnimationFrame(()=>{_consumerMap.invalidateSize(true);_consumerMap.setView([c.lat,c.lng],19);});
+  setTimeout(()=>{if(_consumerMap){_consumerMap.invalidateSize(true);_consumerMap.setView([c.lat,c.lng],19);}},350);
+  setTimeout(()=>{if(_consumerMap)_consumerMap.invalidateSize(true);},1000);
 }
 function setConsumerMapLayer(which){
   if(!_consumerMap)return;
