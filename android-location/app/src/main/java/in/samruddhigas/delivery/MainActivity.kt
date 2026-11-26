@@ -20,6 +20,7 @@ import com.google.android.gms.tasks.CancellationTokenSource
 class MainActivity : Activity() {
     private lateinit var web: WebView
     private var pendingCallback: String? = null
+    private var permissionInFlight = false
     private val permissionRequest = 7001
     private val appUrl = "https://samruddhigas.github.io/locate/deliveryapp/"
 
@@ -47,7 +48,7 @@ class MainActivity : Activity() {
 
     private fun requestFineLocationIfNeeded() {
         val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        if (!fine) ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), permissionRequest)
+        if (!fine && !permissionInFlight) { permissionInFlight = true; ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), permissionRequest) }
     }
 
     inner class NativeLocationBridge {
@@ -92,6 +93,7 @@ class MainActivity : Activity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == permissionRequest) {
+            permissionInFlight = false
             val callback = pendingCallback
             pendingCallback = null
             if (callback != null) {
