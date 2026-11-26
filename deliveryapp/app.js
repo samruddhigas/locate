@@ -211,21 +211,24 @@ async function captureGps(r,button,captureMode='delivery_initial_mapping',option
     if(err)reject(err);else resolve(bestFix);
    };
    deadline=setTimeout(()=>finish(bestFix&&bestFix.acc>0&&bestFix.acc<=1000?null:new Error('No GPS coordinates received within 30 seconds. Delivery was NOT marked done. Check Android and Chrome location permissions, then retry.')),30000);
+   const acceptPosition=pos=>{
+    if(finished)return;
+    const c=pos.coords,acc=Number(c.accuracy);
+    if(!Number.isFinite(acc)||acc<=0||acc>1000)return;
+    const fix={lat:Number(c.latitude),lng:Number(c.longitude),acc,ts:Number(pos.timestamp)||Date.now()};
+    if(!Number.isFinite(fix.lat)||fix.lat < -90||fix.lat > 90||!Number.isFinite(fix.lng)||fix.lng < -180||fix.lng > 180||
+       fix.ts>Date.now()+5000||Date.now()-fix.ts>10000)return;
+    if(!bestFix||fix.acc<bestFix.acc)bestFix=fix;
+    button.textContent='Best GPS '+Math.round(bestFix.acc)+' m…';
+    if(status)status.textContent='Improving GPS fix · best so far '+Math.round(bestFix.acc)+' m';
+    if(bestFix.acc<=10&&Date.now()-startedAt>=5000)finish();
+   };
+   const acceptError=err=>{if(err.code===1)finish(new Error('Location permission denied. Allow precise location for this app.'));else if(status)status.textContent='Waiting for GPS signal…';};
    try{
-    watchId=navigator.geolocation.watchPosition(pos=>{
-     const c=pos.coords,acc=Number(c.accuracy);
-     if(!Number.isFinite(acc)||acc<=0||acc>1000)return;
-     const fix={lat:Number(c.latitude),lng:Number(c.longitude),acc,ts:Number(pos.timestamp)||Date.now()};
-     if(!Number.isFinite(fix.lat)||fix.lat < -90||fix.lat > 90||!Number.isFinite(fix.lng)||fix.lng < -180||fix.lng > 180||
-        fix.ts>Date.now()+5000||Date.now()-fix.ts>10000)return;
-     if(!bestFix||fix.acc<bestFix.acc)bestFix=fix;
-     button.textContent='Best GPS '+Math.round(bestFix.acc)+' m…';
-     if(status)status.textContent='Improving GPS fix · best so far '+Math.round(bestFix.acc)+' m';
-     // Wait briefly after the first good fix so the phone can refine it.
-     if(bestFix.acc<=10&&Date.now()-startedAt>=5000)finish();
-    },err=>{
-     if(err.code===1)finish(new Error('Location permission denied. Allow precise location for this app.'));else if(status)status.textContent='Waiting for GPS signal…';
-    },{enableHighAccuracy:true,timeout:25000,maximumAge:0});
+    const gpsOptions={enableHighAccuracy:true,timeout:25000,maximumAge:0};
+    watchId=navigator.geolocation.watchPosition(acceptPosition,acceptError,gpsOptions);
+    // Ask Android Chrome's one-shot provider in parallel with the watcher.
+    navigator.geolocation.getCurrentPosition(acceptPosition,acceptError,{enableHighAccuracy:true,timeout:20000,maximumAge:0});
    }catch(e){finish(e)}
   });
   if(!best||!Number.isFinite(best.acc)||best.acc<=0||best.acc>1000)throw new Error('No valid GPS coordinate was received. Keep Location enabled and retry.');
