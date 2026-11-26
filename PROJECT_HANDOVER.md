@@ -111,6 +111,8 @@ GPS reliability is a major project requirement. Delivery staff need to capture l
 ### Consumer LocationCapture — latest implementation
 Source: root `index.html`; backend action: `gps_link_capture` in `lpg-api`.
 
+**26 November 2026 follow-up fix (commit `774de59`):** the previous client-side capture window was only 3 seconds, which could reject a customer before Android's fused-location/GNSS provider returned a fix. The capture window is now 25 seconds, uses `maximumAge: 0`, retains the best reading, and treats an individual watch timeout as non-terminal. Leaflet map sizing is recalculated after the hidden pin panel is displayed to address a blank/unstyled map canvas on mobile. Server-side acceptance remains capped at 30 m; no server validation or approval rule was weakened. Source fix is committed; actual Android field verification remains pending.
+
 Latest change committed as:
 - Commit: `40385802e0f9c2965901e6f50b9b293df6d4820b`
 - Commit URL: https://github.com/samruddhigas/locate/commit/40385802e0f9c2965901e6f50b9b293df6d4820b
@@ -161,9 +163,10 @@ Cache update commit:
 | GitHub Pages | Three intended URLs listed above | Configuration/source context | Live publication not independently verified |
 
 ### Recent commits
-1. `40385802e0f9c2965901e6f50b9b293df6d4820b` — Fix consumer GPS capture reliability and server validation.
-2. `bd31411437f8b7370339b7607b064f7a24d39056` — Refresh DeliveryApp cache after GPS reliability update.
-3. `aa2acc73e6c9fe83f90c3ceffccc8da86795816c` — Update dashboard build metadata for active GPS API v46.
+1. `774de59b22bc203d993b27084a1810b836b062a0` — Extend consumer GPS acquisition to 25 seconds and correct hidden Leaflet map rendering.
+2. `40385802e0f9c2965901e6f50b9b293df6d4820b` — Fix consumer GPS capture reliability and server validation.
+3. `bd31411437f8b7370339b7607b064f7a24d39056` — Refresh DeliveryApp cache after GPS reliability update.
+4. `aa2acc73e6c9fe83f90c3ceffccc8da86795816c` — Update dashboard build metadata for active GPS API v46.
 
 Dashboard v36 change was a metadata/header update in the latest commit, not proof that every Dashboard feature was retested or newly deployed.
 
@@ -227,6 +230,7 @@ A feature must remain in this section until a reproducible test has passed and t
 ### P1 — GPS accuracy and field usability
 - [ ] Add clear GPS status: acquiring, acceptable, fallback, rejected, saved, pending sync, and failed.
 - [ ] Record capture accuracy, age, capture mode, and timestamp for diagnostics.
+- [ ] Field-test the 25-second GPS acquisition and visible/movable Leaflet pin map on the consumer link using actual Android phones; source-level fix alone is not field verification.
 - [ ] Add safe retry that does not make staff repeat the entire delivery workflow.
 - [ ] Verify pin placement and prevent accidental pin movement caused by map interaction.
 - [ ] Build an office GPS review queue with approve/reject/re-capture actions and audit trail.
