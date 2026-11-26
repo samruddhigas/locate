@@ -8924,8 +8924,8 @@ function renderRouteSummaryCards() {
     return `<div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${color};border-radius:8px;padding:10px 14px;min-width:160px;cursor:pointer;" data-route-dm="${escAttr(r.dm)}">
       <div style="font-size:11px;font-weight:700;color:${color}">${escHtml(r.dm)}</div>
       <div style="font-size:18px;font-weight:700;margin:2px 0">${r.totalOrders} <span style="font-size:11px;color:var(--text2)">orders</span></div>
-      <div style="font-size:11px;color:var(--text2)">${r.totalQty} cyls · ~${r.dist} km</div>
-      <div style="font-size:10px;color:var(--text3)">${r.optimized.length} stops</div>
+      <div style="font-size:11px;color:var(--text2)">${r.totalQty} cyls · ~${r.dist} km${Number.isFinite(r.driveMinutes)?' · ~'+Math.round(r.driveMinutes)+' min drive':''}</div>
+      <div style="font-size:10px;color:var(--text3)">${r.optimized.length} stops · ${r.routingMethod==='road_network_estimate'?'road-network estimate':'straight-line fallback'}</div>
       ${warn}
     </div>`;
   }).join('');
@@ -8946,7 +8946,7 @@ async function publishSelectedRoute() {
   if(!AUTH?.token||!['admin','staff'].includes(AUTH.role)){statusEl.textContent='⚠️ Office admin/staff login is required to publish routes.';return;}
   const now=new Date(),routeDate=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
   if(!confirm('Publish '+stops.length+' verified GPS stops (office-approved or 3 consistent deliveries) for '+dm+' on '+routeDate+'? This replaces the previous published route for this delivery boy and date.'))return;
-  statusEl.textContent='⏳ Publishing and validating assigned bookings…';
+  statusEl.textContent='⏳ Publishing office-controlled stop order… distance and travel time are estimates; use map navigation for live traffic.';
   try{
     const result=await newProjectApiPost({action:'route_manage',op:'publish',route_date:routeDate,delivery_man:dm,stops},AUTH.token);
     statusEl.textContent='✅ Published '+(result.stops||[]).length+' GPS stops for '+dm+' · straight-line estimate '+Number(result.total_distance_km||0).toFixed(1)+' km. DeliveryApp will load this route on refresh.';
