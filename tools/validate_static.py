@@ -212,6 +212,8 @@ gps_checks = [
     ("standalone GPS requests a network-assisted coarse candidate", "enableHighAccuracy:false,timeout:15000,maximumAge:0" in delivery_js_source),
     ("standalone DeliveryApp can consume native Android fused GPS", "requestNativeGps(acceptPosition,acceptError)" in delivery_js_source),
     ("native Android wrapper uses Fused Location Provider", "getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY" in native_android_source),
+    ("native Android wrapper falls back to platform GPS and network providers", "LocationManager.GPS_PROVIDER" in native_android_source and "LocationManager.NETWORK_PROVIDER" in native_android_source),
+    ("native Android wrapper validates callback IDs", 'Regex("[A-Za-z0-9_-]{1,100}")' in native_android_source),
     ("native Android callback IDs are sanitized", "Regex(\"[A-Za-z0-9_-]{1,100}\")" in native_android_source),
     ("standalone delivery app opens the draggable pin map for every GPS capture", "const selected=await chooseGpsPin(r,best);" in delivery_js_source),
     ("standalone pin confirmation is disabled above 30 m accuracy", "pinPickerConfirm').disabled=offset>500||!accuracyOk" in delivery_js_source),
