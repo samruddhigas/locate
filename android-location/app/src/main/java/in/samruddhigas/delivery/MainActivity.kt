@@ -5,7 +5,11 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.webkit.GeolocationPermissions
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
@@ -55,7 +59,7 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun getCurrentLocation(callbackId: String) {
             runOnUiThread {
-                if (callbackId.isBlank() || callbackId.length > 100) return@runOnUiThread
+                if (!callbackId.matches(Regex("[A-Za-z0-9_-]{1,100}"))) return@runOnUiThread
                 val fine = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
                 if (!fine) {
                     pendingCallback = callbackId
@@ -67,16 +71,67 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun isFreshLocation(location: Location): Boolean {
+        val age = System.currentTimeMillis() - location.time
+        return location.latitude.isFinite() && location.longitude.isFinite() &&
+            location.latitude in -90.0..90.0 && location.longitude in -180.0..180.0 &&
+            location.accuracy.isFinite() && location.accuracy > 0f &&
+            age >= -5_000 && age <= 10_000
+    }
+
     private fun fetchFusedLocation(callbackId: String) {
         val client = LocationServices.getFusedLocationProviderClient(this)
         val cancellation = CancellationTokenSource()
         client.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cancellation.token)
             .addOnSuccessListener { location ->
-                if (location == null) sendGpsError(callbackId, "Android fused location returned no fix")
-                else if (System.currentTimeMillis() - location.time > 10_000) sendGpsError(callbackId, "Android location fix is older than 10 seconds")
-                else sendGps(callbackId, location)
+                if (location != null && isFreshLocation(location) && location.accuracy <= 10f) {
+                    sendGps(callbackId, location)
+                } else {
+                    fetchPlatformLocation(callbackId, location?.takeIf { isFreshLocation(it) })
+                }
             }
-            .addOnFailureListener { sendGpsError(callbackId, it.message ?: "Android fused location failed") }
+            .addOnFailureListener { fetchPlatformLocation(callbackId, null) }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun fetchPlatformLocation(callbackId: String, initial: Location?) {
+        val manager = getSystemService(LOCATION_SERVICE) as LocationManager
+        val handler = Handler(Looper.getMainLooper())
+        val startedAt = System.currentTimeMillis()
+        var best: Location? = initial
+        var finished = false
+
+        lateinit var listener: LocationListener
+        val timeout = Runnable { finish() }
+        fun finish() {
+            if (finished) return
+            finished = true
+            try { manager.removeUpdates(listener) } catch (_: Exception) { }
+            handler.removeCallbacks(timeout)
+            val result = best
+            if (result != null && isFreshLocation(result)) sendGps(callbackId, result)
+            else sendGpsError(callbackId, "Android GPS and network providers returned no fresh location")
+        }
+
+        listener = LocationListener { location ->
+            if (!finished && isFreshLocation(location) &&
+                (best == null || location.accuracy < best!!.accuracy)) best = location
+            val candidate = best
+            if (!finished && candidate != null && candidate.accuracy <= 10f &&
+                System.currentTimeMillis() - startedAt >= 5_000) finish()
+        }
+
+        var requested = false
+        for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
+            try {
+                if (manager.isProviderEnabled(provider)) {
+                    manager.requestLocationUpdates(provider, 1_000L, 0f, listener, Looper.getMainLooper())
+                    requested = true
+                }
+            } catch (_: Exception) { }
+        }
+        if (!requested) { finish(); return }
+        handler.postDelayed(timeout, 20_000L)
     }
 
     private fun sendGps(callbackId: String, location: Location) {
