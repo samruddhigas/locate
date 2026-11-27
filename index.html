@@ -434,23 +434,25 @@ function requestConsumerNativeGps(onPosition,onError){
 }
 function startCapture(){
   if(_capturing||_captureReady)return;
-  if(!navigator.geolocation){showError('Your browser does not support GPS. Please open this link in Chrome.');return;}
+  const browserGps=!!navigator.geolocation;
+  const nativeGps=!!(window.AndroidLocation&&typeof window.AndroidLocation.getCurrentLocation==='function');
+  if(!browserGps&&!nativeGps){showError('No location provider is available. Open this secure link in Chrome or the Samruddhi Android app.');return;}
   if(!_linkToken||!_consumerNo||!_apiKey){showError('Secure link verification is incomplete. Request a new link from the agency.');return;}
   _capturing=true;_readings=[];_bestFix=null;_captureStartedAt=Date.now();
   document.getElementById('shareBtn').disabled=true;
   document.getElementById('shareBtn').innerHTML='<span class="loading-spinner"></span><span>Finding your best GPS…<span class="btn-marathi">अचूक लोकेशन शोधत आहे…</span></span>';
   document.getElementById('successCard').style.display='none';document.getElementById('errorCard').style.display='none';
   document.getElementById('pinMapPanel').style.display='none';document.getElementById('accMeter').classList.add('visible');
-  const gpsOptions={enableHighAccuracy:true,timeout:45000,maximumAge:0};
-  _watchId=navigator.geolocation.watchPosition(onGPSReading,onGPSError,gpsOptions);
-  // Native Android wrapper can provide a separate Google Play services fused fix.
-  requestConsumerNativeGps(onGPSReading,onGPSError);
-  // Android Chrome may deliver the first usable fix faster through the one-shot
-  // provider path. Run it alongside watchPosition; both feed the same validator.
-  navigator.geolocation.getCurrentPosition(onGPSReading,onGPSError,{enableHighAccuracy:true,timeout:20000,maximumAge:0});
-  // Allow Android fused-location/GNSS providers enough time to produce a real fix.
-  // Keep the best fresh reading for up to 45 seconds; do not fail after an arbitrary short timeout.
-  _captureTimer=setTimeout(()=>{if(_capturing){if(_bestFix)showEntranceMap(_bestFix,true);else{_capturing=false;stopWatch();document.getElementById('accMeter').classList.remove('visible');showError('No GPS reading received within 45 seconds. Check device Location, Chrome permission and Precise location. You can retry without restarting the page.');resetBtn();}}},45000);
+  let nativeRequested=false;
+  try{nativeRequested=requestConsumerNativeGps(onGPSReading,err=>{document.getElementById('accHint').textContent='Native location unavailable; checking browser location…';});}catch(_){nativeRequested=false;}
+  if(browserGps){
+    try{_watchId=navigator.geolocation.watchPosition(onGPSReading,onGPSError,{enableHighAccuracy:true,timeout:45000,maximumAge:0});}catch(_){_watchId=null;}
+    try{navigator.geolocation.getCurrentPosition(onGPSReading,onGPSError,{enableHighAccuracy:true,timeout:20000,maximumAge:0});}catch(_){ }
+    // Network-assisted coarse fix may centre the map but cannot bypass <=30 m save validation.
+    try{navigator.geolocation.getCurrentPosition(onGPSReading,onGPSError,{enableHighAccuracy:false,timeout:15000,maximumAge:0});}catch(_){ }
+  }
+  if(!nativeRequested&&!browserGps){_capturing=false;showError('No supported location provider is available on this device.');resetBtn();return;}
+  _captureTimer=setTimeout(()=>{if(_capturing){if(_bestFix)showEntranceMap(_bestFix,true);else{_capturing=false;stopWatch();document.getElementById('accMeter').classList.remove('visible');showError('No location reading received within 45 seconds. Check Android Location and precise permission, move outdoors, then retry.');resetBtn();}}},45000);
 }
 function readingCentre(a){return{lat:a.reduce((s,r)=>s+r.lat,0)/a.length,lng:a.reduce((s,r)=>s+r.lng,0)/a.length};}
 function pointDistance(a,b,c,d){const R=6371000,x=Math.sin((c-a)*Math.PI/360)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin((d-b)*Math.PI/360)**2;return 2*R*Math.asin(Math.sqrt(x));}
@@ -470,11 +472,12 @@ function onGPSReading(pos){
 }
 function onGPSError(err){
   if(!_capturing)return;
-  if(err&&err.code===1){
+  if(err&&err.code===1&&!(window.AndroidLocation&&typeof window.AndroidLocation.getCurrentLocation==='function')){
     _capturing=false;stopWatch();if(_captureTimer)clearTimeout(_captureTimer);
     document.getElementById('accMeter').classList.remove('visible');
-    showError('Location permission denied. Allow precise location for Chrome and retry.');resetBtn();return;
+    showError('Browser location permission denied. Allow precise location in Chrome or open the Samruddhi Android app.');resetBtn();return;
   }
+  if(err&&err.code===1){document.getElementById('accHint').textContent='Browser permission unavailable; waiting for Android native location…';return;}
   // POSITION_UNAVAILABLE and TIMEOUT can be transient on Android fused location.
   // Keep the watcher alive; the overall 45-second deadline controls failure.
   document.getElementById('accHint').textContent='GPS is still searching. Keep this screen open; transient GPS errors will be retried automatically…';
@@ -558,7 +561,7 @@ async function submitLocation(){
     try{const u=new URL(location.href);u.searchParams.delete('t');u.searchParams.delete('k');history.replaceState({},'',u.pathname);}catch(_){}
   }catch(e){btn.disabled=false;btn.innerHTML='<span>📍 Confirm & Submit Location</span><span class="btn-marathi">लोकेशन निश्चित करून पाठवा</span>';showError(e.message||'Could not save location. Request a new link if this one has expired.');}
 }
-function stopWatch(){if(_watchId!==null){navigator.geolocation.clearWatch(_watchId);_watchId=null;}}
+function stopWatch(){if(_watchId!==null&&navigator.geolocation){navigator.geolocation.clearWatch(_watchId);_watchId=null;}}
 function showSuccess(){document.getElementById('successCard').style.display='block';document.getElementById('errorCard').style.display='none';}
 function showError(msg){document.getElementById('errorDetail').textContent=msg;document.getElementById('errorCard').style.display='block';document.getElementById('successCard').style.display='none';}
 function resetBtn(){
