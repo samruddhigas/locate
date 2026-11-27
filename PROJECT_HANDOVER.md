@@ -1002,3 +1002,44 @@ No production customer master, delivered-cylinder, pending-booking, or completio
   - README `6915d35a0c0dc57fb24b0672cf8f969cb19cb3b7`
   - APK workflow `3f30bd9ba7bf74e6dfdef1e79452e98c2bda2e58`.
 - JavaScript syntax checks re-run after the final Dashboard changes: standalone app.js, service worker, two Dashboard inline scripts and consumer inline script all parse successfully.
+
+
+## 24. 27 November 2026 — Multi-provider location capture defect correction
+
+### Root cause found
+- A source audit found that the native Android Fused Location Provider existed but could not reliably act as a true fallback: standalone DeliveryApp returned immediately when `navigator.geolocation` was absent, before calling the native bridge. The Dashboard-embedded DeliveryApp had the same early guard. Both also started the native provider only after starting browser geolocation, so a synchronous browser failure could prevent native acquisition.
+- The consumer location form had the same browser-only early return and could terminate the whole capture on a browser permission-denied callback even while a native Android provider was available.
+
+### Source corrections committed
+- Standalone DeliveryApp `deliveryapp/app.js`: commit `55f272a5c1eae1f43f80e5fc33bfb63274f8623a`.
+  - Browser geolocation is now optional when the Android native bridge exists.
+  - Native Fused Location is started independently before browser calls.
+  - Browser high-accuracy watch, high-accuracy one-shot and a separate coarse/network-assisted one-shot all feed the same timestamp/coordinate/accuracy validator.
+  - Browser permission failure no longer cancels an active native request. Clear-watch is guarded for native-only operation.
+  - Acquisition deadline increased from 30 to 40 seconds; delivery completion still requires the existing 1–30 m fresh visit GPS and entrance-pin confirmation.
+- Customer canonical root `index.html`: commit `601e074d553924d535ca061e6574aedd5419dc55`.
+  - Native Android bridge can operate without browser geolocation.
+  - Browser permission denial does not cancel an active native request.
+  - Browser high-accuracy watch, high-accuracy one-shot and coarse/network-assisted one-shot run independently; weak estimates remain subject to the existing 30 m save gate.
+  - Customer capture retains its 45-second overall acquisition window and existing entrance-pin workflow.
+- Dashboard embedded DeliveryApp `dashboard/index.html`: commit `c3fdeeba8183c9392de7f17bd354324e09592068`.
+  - Same native-only capability, independent native-first start, browser watch/one-shot/coarse candidate and 40-second bounded acquisition.
+  - Existing strict map confirmation and exact booking GPS server validation remain in place.
+- Native Android wrapper `android-location/app/src/main/java/in/samruddhigas/delivery/MainActivity.kt`: commit `82c147212c22a062d7d2757650a566b62ad3447c`.
+  - Fused Location Provider remains the first native source; a fresh <=10 m fused fix can return immediately.
+  - If fused location is unavailable or weaker, Android `GPS_PROVIDER` and `NETWORK_PROVIDER` are requested independently for up to 20 seconds. The best fresh, positive-accuracy result is returned; no coordinate or accuracy is fabricated.
+  - Callback IDs are restricted to `[A-Za-z0-9_-]{1,100}` before they are used in the WebView bridge.
+- Native wrapper README updated to describe the provider fallback.
+- Static validator updated to assert native-only fallback, provider ordering, coarse browser candidate, native GPS/network fallback and callback-ID validation. Validator commit: `7b78590b6a873d936a041702c59189c4b5448a83`.
+
+### Accuracy and data safety rules retained
+- A network-assisted fix is a candidate/map-centre aid, not permission to save weak location. The client and backend still enforce positive, fresh reported accuracy and the 30 m maximum for delivery GPS evidence.
+- Delivery completion still requires GPS tied to the exact booking, consumer and signed-in delivery person. No approved consumer pin can substitute for a visit observation.
+- Office manual pins remain a separate source and are never represented as measured GPS accuracy.
+- No consumer master, pending booking, delivered-cylinder, completion, approved GPS, or route records were intentionally modified by these source-only changes. No Supabase schema or Edge Function deployment was performed.
+
+### Verification status
+- GitHub source commits were accepted by the repository. Re-fetch and compare all four changed source files before closing the release.
+- Automated GitHub Actions static validation and Android Gradle build are still required; the Android native-provider changes have not yet been confirmed by a completed APK build in this session.
+- Physical Android testing remains essential: Chrome denied/browser API unavailable with native bridge enabled; fused provider returning null; GPS provider returning a stronger fix; network provider only returning a weak fix; indoor/urban no-fix; precise vs approximate permission; map pin save gate; and offline GPS queue.
+- No claim is made that 7 m accuracy can be guaranteed. If the phone and its available providers cannot produce a fresh fix within 30 m, the app must continue to block delivery completion and report the actual failure rather than inventing coordinates.
