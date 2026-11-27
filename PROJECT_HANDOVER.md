@@ -1025,7 +1025,7 @@ No production customer master, delivered-cylinder, pending-booking, or completio
 - Dashboard embedded DeliveryApp `dashboard/index.html`: commit `c3fdeeba8183c9392de7f17bd354324e09592068`.
   - Same native-only capability, independent native-first start, browser watch/one-shot/coarse candidate and 40-second bounded acquisition.
   - Existing strict map confirmation and exact booking GPS server validation remain in place.
-- Native Android wrapper `android-location/app/src/main/java/in/samruddhigas/delivery/MainActivity.kt`: commit `82c147212c22a062d7d2757650a566b62ad3447c`.
+- Native Android wrapper `android-location/app/src/main/java/in/samruddhigas/delivery/MainActivity.kt`: initial provider fallback commit `82c147212c22a062d7d2757650a566b62ad3447c`; follow-up lifecycle/timestamp hardening commit `fdf93d9c1e5c627bbd788bc391cc106f2d51bb2b`.
   - Fused Location Provider remains the first native source; a fresh <=10 m fused fix can return immediately.
   - If fused location is unavailable or weaker, Android `GPS_PROVIDER` and `NETWORK_PROVIDER` are requested independently for up to 20 seconds. The best fresh, positive-accuracy result is returned; no coordinate or accuracy is fabricated.
   - Callback IDs are restricted to `[A-Za-z0-9_-]{1,100}` before they are used in the WebView bridge.
