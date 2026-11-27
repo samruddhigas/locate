@@ -4,7 +4,9 @@ This is an Android WebView shell for the existing DeliveryApp. It keeps the curr
 
 ## Location method
 
-- Uses Google Play services `FusedLocationProviderClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, ...)`.
+- First requests Google Play services `FusedLocationProviderClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, ...)`.
+- If the fused fix is missing or weaker than 10 m, also listens to Android `GPS_PROVIDER` and `NETWORK_PROVIDER` for up to 20 seconds, retaining the best fresh positive-accuracy fix.
+- Browser geolocation is no longer a prerequisite for the native bridge; the DeliveryApp can request native location even if the browser geolocation API is absent or denied.
 - Requests Android fine/precise location permission.
 - Returns latitude, longitude, reported accuracy and timestamp to the web app through a restricted JavaScript bridge.
 - The web app combines the native fix with browser `watchPosition` and `getCurrentPosition` readings.
