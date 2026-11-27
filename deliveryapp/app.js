@@ -201,7 +201,9 @@ function requestNativeGps(onPosition,onError){
  catch(e){delete window.__nativeGpsCallbacks[id];onError({code:2,message:e.message||'Native Android GPS request failed'});return false;}
 }
 async function captureGps(r,button,captureMode='delivery_initial_mapping',options={}){
- if(!navigator.geolocation){const msg='Location permission or GPS is unavailable on this phone.';if(!options.silent)alert(msg);return {saved:false,message:msg}}
+ const browserGps=!!navigator.geolocation;
+ const nativeGps=!!(window.AndroidLocation&&typeof window.AndroidLocation.getCurrentLocation==='function');
+ if(!browserGps&&!nativeGps){const msg='No location provider is available. Open the official app in Chrome or the Samruddhi Android app.';if(!options.silent)alert(msg);return {saved:false,message:msg}}
  const detail=$('stopDetail');
  const status=detail?detail.querySelector('.gps-status'):null;
  button.disabled=true;button.textContent='Finding best GPS…';
@@ -219,11 +221,11 @@ async function captureGps(r,button,captureMode='delivery_initial_mapping',option
    let watchId=null,deadline=null,bestFix=null,finished=false,startedAt=Date.now();
    const finish=(err)=>{
     if(finished)return;finished=true;
-    if(watchId!==null)navigator.geolocation.clearWatch(watchId);
+    if(watchId!==null&&navigator.geolocation)navigator.geolocation.clearWatch(watchId);
     if(deadline!==null)clearTimeout(deadline);
     if(err)reject(err);else resolve(bestFix);
    };
-   deadline=setTimeout(()=>finish(bestFix&&bestFix.acc>0&&bestFix.acc<=1000?null:new Error('No GPS coordinates received within 30 seconds. Delivery was NOT marked done. Check Android and Chrome location permissions, then retry.')),30000);
+   deadline=setTimeout(()=>finish(bestFix&&bestFix.acc>0&&bestFix.acc<=1000?null:new Error('No valid location fix received within 40 seconds. Check Android Location and precise permission, move outdoors, then retry.')),40000);
    const acceptPosition=pos=>{
     if(finished)return;
     const c=pos.coords,acc=Number(c.accuracy);
@@ -236,15 +238,17 @@ async function captureGps(r,button,captureMode='delivery_initial_mapping',option
     if(status)status.textContent='Improving GPS fix · best so far '+Math.round(bestFix.acc)+' m';
     if(bestFix.acc<=10&&Date.now()-startedAt>=5000)finish();
    };
-   const acceptError=err=>{if(err.code===1)finish(new Error('Location permission denied. Allow precise location for this app.'));else if(status)status.textContent='Waiting for GPS signal…';};
-   try{
-    const gpsOptions={enableHighAccuracy:true,timeout:25000,maximumAge:0};
-    watchId=navigator.geolocation.watchPosition(acceptPosition,acceptError,gpsOptions);
-    // Native Android builds use Google Play services Fused Location Provider in parallel.
-    requestNativeGps(acceptPosition,acceptError);
-    // Ask Android Chrome's one-shot provider in parallel with the watcher.
-    navigator.geolocation.getCurrentPosition(acceptPosition,acceptError,{enableHighAccuracy:true,timeout:20000,maximumAge:0});
-   }catch(e){finish(e)}
+   let nativeRequested=false;
+   const acceptError=err=>{if(err.code===1&&!nativeRequested)finish(new Error('Browser location permission denied. Allow precise location or use the Samruddhi Android app.'));else if(status)status.textContent='One location provider is unavailable; waiting for the other provider…';};
+   // Start native fused location independently before browser geolocation.
+   try{nativeRequested=requestNativeGps(acceptPosition,err=>{if(status)status.textContent='Native location: '+(err.message||'unavailable')+'; checking browser location…';});}catch(_){nativeRequested=false;}
+   if(browserGps){
+    try{watchId=navigator.geolocation.watchPosition(acceptPosition,acceptError,{enableHighAccuracy:true,timeout:25000,maximumAge:0});}catch(_){watchId=null;}
+    try{navigator.geolocation.getCurrentPosition(acceptPosition,acceptError,{enableHighAccuracy:true,timeout:20000,maximumAge:0});}catch(_){ }
+    // Network-assisted coarse fix is a secondary candidate, never a relaxed save rule.
+    try{navigator.geolocation.getCurrentPosition(acceptPosition,acceptError,{enableHighAccuracy:false,timeout:15000,maximumAge:0});}catch(_){ }
+   }
+   if(!nativeRequested&&!browserGps)finish(new Error('No supported location provider is available on this device.'));
   });
   if(!best||!Number.isFinite(best.acc)||best.acc<=0||best.acc>1000)throw new Error('No valid GPS coordinate was received. Keep Location enabled and retry.');
   const accuracy=best.acc;
