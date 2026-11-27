@@ -76,7 +76,7 @@ class MainActivity : Activity() {
         return location.latitude.isFinite() && location.longitude.isFinite() &&
             location.latitude in -90.0..90.0 && location.longitude in -180.0..180.0 &&
             location.accuracy.isFinite() && location.accuracy > 0f &&
-            age >= -5_000 && age <= 10_000
+            age >= -5_000L && age <= 10_000L
     }
 
     private fun fetchFusedLocation(callbackId: String) {
@@ -102,7 +102,7 @@ class MainActivity : Activity() {
         var finished = false
 
         lateinit var listener: LocationListener
-        val timeout = Runnable { finish() }
+        lateinit var timeout: Runnable
         fun finish() {
             if (finished) return
             finished = true
@@ -113,6 +113,7 @@ class MainActivity : Activity() {
             else sendGpsError(callbackId, "Android GPS and network providers returned no fresh location")
         }
 
+        timeout = Runnable { finish() }
         listener = LocationListener { location ->
             if (!finished && isFreshLocation(location) &&
                 (best == null || location.accuracy < best!!.accuracy)) best = location
